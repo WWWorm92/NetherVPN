@@ -38,9 +38,8 @@ func (c Config) validate() (noise.DHKey,[]byte,netip.Addr,error) {
 	return identity,pub,addr,nil
 }
 
-// RunClient is a single-peer Linux prototype. It never changes system routes,
-// DNS, NAT, forwarding or interface addresses. The caller must configure these
-// in an isolated network namespace for testing.
+// RunClient is a single-peer Linux prototype. It never changes default routes,
+// DNS, NAT or forwarding. With LocalAddress set, it configures its TUN address.
 func RunClient(ctx context.Context,c Config) error {
 	identity,pub,source,err:=c.validate()
 	if err!=nil{return err}
@@ -77,5 +76,6 @@ func RunServer(ctx context.Context,c Config) error {
 	device,err:=tun.Open(c.Interface)
 	if err!=nil{return err}
 	defer device.Close()
+	if err:=configureInterface(device,c.LocalAddress,c.MTU);err!=nil{return err}
 	return runPumps(ctx,device,conn,peer,secure,c.MTU,source)
 }
