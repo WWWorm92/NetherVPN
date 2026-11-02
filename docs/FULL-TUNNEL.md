@@ -36,10 +36,15 @@ Assuming the public outgoing interface is `eth0`:
 ```bash
 sudo bash scripts/configure-full-tunnel.sh enable eth0 10.77.0.0/24 nvpn0
 sudo bash scripts/configure-full-tunnel.sh status eth0 10.77.0.0/24 nvpn0
+sudo systemctl enable --now nethervpn-full-tunnel.service
 ```
 
 The script enables IPv4 forwarding and installs **only** scoped
 iptables filter and MASQUERADE rules. It does not alter the host default route.
+It stores a root-only `/etc/nethervpn/full-tunnel.env` for the optional
+`nethervpn-full-tunnel.service`. Enabling that service reapplies the scoped
+rules on boot. The persistent systemd service must be explicitly enabled; do
+not rely on one-time iptables changes surviving a reboot.
 If your host uses nftables, firewalld, UFW or cloud security-group restrictions,
 verify that the VPN interface forwarding and inbound UDP port are allowed; an
 ACCEPT in one firewall chain may not override another rejecting rule. The rules
@@ -49,6 +54,7 @@ persist them using your host firewall manager.
 Rollback:
 
 ```bash
+sudo systemctl disable --now nethervpn-full-tunnel.service
 sudo bash scripts/configure-full-tunnel.sh disable eth0 10.77.0.0/24 nvpn0
 ```
 
@@ -75,6 +81,12 @@ To revoke a device:
 ```bash
 sudo nether-admin revoke -name phone
 sudo systemctl restart nethervpn-server
+```
+
+For transfer to the logged-in administrator's home (do not paste secrets into chat):
+
+```bash
+sudo install -o "$(id -un)" -g "$(id -gn)" -m 600 /etc/nethervpn/clients/phone.conf "$HOME/phone.conf"
 ```
 
 After transfer, delete unnecessary secret exports from the server if your
