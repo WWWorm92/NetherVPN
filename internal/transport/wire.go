@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	wireInit byte = 1
-	wireResponse byte = 2
+	wireInit byte = 0xA1
+	wireResponse byte = 0xA2
 	sessionParametersSize = 10
 )
 var ErrHandshakeFrame = errors.New("transport: invalid handshake frame")
