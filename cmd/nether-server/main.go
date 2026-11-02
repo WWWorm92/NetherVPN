@@ -12,6 +12,7 @@ import(
 func main(){
  var c app.Config
  config:=flag.String("config","","NetherVPN server profile (.conf)")
+ peerDir:=flag.String("peers-dir","/etc/nethervpn/peers","directory of authorized public client profiles")
  flag.StringVar(&c.Interface,"tun","nvpn0","TUN name")
  flag.StringVar(&c.Listen,"listen","0.0.0.0:51830","UDP listen address")
  flag.StringVar(&c.PrivateKey,"private-key","","deprecated: private key on argv (insecure)")
@@ -25,6 +26,7 @@ func main(){
   address:=p.ListenAddress;if address==""{address="0.0.0.0"}
   c=app.Config{Interface:p.Interface,Listen:address+":"+port,PrivateKey:p.PrivateKey,PeerPublicKey:p.PublicKey,AllowedSource:p.AllowedIP,LocalAddress:p.Address,MTU:p.MTU}
  }
+ c.PeersDir=*peerDir
  ctx,stop:=signal.NotifyContext(context.Background(),os.Interrupt,syscall.SIGTERM);defer stop()
  if err:=app.RunServer(ctx,c);err!=nil{fmt.Fprintln(os.Stderr,err);os.Exit(1)}
 }

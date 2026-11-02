@@ -1,53 +1,58 @@
 # NetherVPN
 
-**NetherVPN** is an experimental, self-hosted, multi-user VPN platform with a versioned wire protocol.
+**NetherVPN** — experimental self-hosted encrypted VPN using a custom versioned
+UDP packet format and standard, reviewed cryptographic primitives (Noise IK,
+X25519, ChaCha20-Poly1305, BLAKE2s). **Pre-alpha: not audited; do not use for
+privacy-critical traffic or production systems.**
 
-> [!WARNING]
-> Pre-alpha research software. There is no working VPN tunnel yet. Do not use to protect sensitive traffic.
+## Current capabilities
 
-## Design goals
+- Linux gateway and Linux CLI/desktop (Tkinter) client with authenticated TUN.
+- Android client with foreground Android VpnService, imported profiles, encrypted
+  Keystore storage, keepalives, encrypted packet forwarding and reconnect.
+- Multiple independently authorized clients on one gateway; return packets are
+  delivered to the assigned client IP, not just the last connected client.
+- `nether-admin create/list/revoke` generates unique Android `.conf` profiles,
+  allocates a free tunnel IPv4 and registers each client's public key.
+- Optional **Android full-tunnel IPv4** (all device IPv4 + DNS routed through
+  the encrypted tunnel; IPv6 intercepted and blocked until supported).
+- Optional scoped IPv4 NAT/forwarding on the gateway, with opt-in systemd
+  boot persistence. The server's default route remains unchanged.
+- Android debug APK built by GitHub Actions and published as a pre-release.
 
-- Independently specified network protocol; **no custom cryptographic primitives**.
-- Linux VPN gateway and CLI client first; Windows and Android later.
-- UDP transport first, with optional QUIC and TLS/TCP adapters.
-- Device-level identity, enrollment, revocation, and multi-user management.
-- Standalone deployment first, with a separate control plane for multi-server deployments.
-- IPv4/IPv6, split/full tunnel, reconnect, anti-replay, key rotation, and leak protection as explicit milestones.
-- Measured performance, fuzzing, interoperability tests and a security review before stable release.
+**Get started:** [Full-tunnel setup and rollback](docs/FULL-TUNNEL.md) ·
+[Android client](android/README.md) ·
+[Releases](https://github.com/WWWorm92/NetherVPN/releases) ·
+[Security](docs/SECURITY.md)
 
-## Project status
+### Linux build
 
-Version: **0.1.0-dev** — architecture and executable placeholders only.
+Requires Go 1.23+.
 
-## Layout
-
-```text
-cmd/nether-server/   Linux gateway entry point (placeholder)
-cmd/nether-client/   Linux client entry point (placeholder)
-internal/protocol/   Protocol wire constants and future parser
-docs/               Architecture, security and milestones
-```
-
-## Build
-
-Requires Go 1.23 or later.
-
-```sh
-go test ./...
+```bash
+go test -race ./...
 go build ./cmd/nether-server
 go build ./cmd/nether-client
+go build ./cmd/nether-admin
 ```
 
-The binaries intentionally exit with a message: tunneling has not been implemented.
+### Current security limitations
 
-## Security approach
+No independent security review, no production-grade key rotation, no complete
+handshake replay/DoS hardening or formal Android↔Go interoperability test on
+real devices. Full tunnel currently supports **IPv4 only**; IPv6 apps may not
+work because IPv6 is deliberately blocked, not leaked. Android's system-wide
+*Block connections without VPN* option is needed to prevent direct traffic
+while disconnected or reconnecting. DNS requires server-side NAT. VPN egress
+and firewall changes need explicit root action and real-network testing.
 
-Only reviewed, established cryptographic libraries will be considered. The candidate authenticated handshake is Noise IK with X25519, ChaCha20-Poly1305 and BLAKE2s. The protocol specification must define key confirmation, authenticated packet metadata, nonce management, anti-replay windows, rekeying, identity enrollment, denial-of-service handling and error behavior **before** network traffic is enabled.
-
-## Roadmap
-
-See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The existing `examples/server.conf` and `examples/client.conf` show the
+legacy point-to-point format. For multiple clients, migrate server
+`Address = 10.77.0.1/30` to `10.77.0.1/24` (after verifying no address
+overlap) and create new profiles with `nether-admin`; do not share
+one private key between devices.
 
 ## License
 
-License decision pending. Do not assume open-source permissions until a LICENSE file is added.
+License decision for the project remains pending. The Noise-Java third-party
+dependency has its own MIT license.

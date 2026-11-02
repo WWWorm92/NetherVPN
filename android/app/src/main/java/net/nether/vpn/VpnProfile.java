@@ -12,18 +12,23 @@ public final class VpnProfile {
     public final String endpointHost;
     public final int endpointPort;
     public final String localIp;
+    public final byte[] localBytes;
     public final int localPrefix;
     public final String peerIp;
+    public final byte[] peerBytes;
     public final int peerPrefix;
     public final int mtu;
+    public final boolean fullTunnel;
+    public final String dns;
     public final byte[] privateKey;
     public final byte[] serverPublicKey;
 
     private VpnProfile(String host, int port, String local, int prefix, String peer, int peerBits,
-                       int mtu, byte[] secret, byte[] serverKey) {
+                       int mtu, boolean full, String resolver, byte[] localRaw, byte[] peerRaw, byte[] secret, byte[] serverKey) {
         this.endpointHost = host; this.endpointPort = port;
-        this.localIp = local; this.localPrefix = prefix;
-        this.peerIp = peer; this.peerPrefix = peerBits; this.mtu = mtu;
+        this.localIp = local; this.localPrefix = prefix; this.localBytes = localRaw.clone();
+        this.peerIp = peer; this.peerPrefix = peerBits; this.peerBytes = peerRaw.clone(); this.mtu = mtu;
+        this.fullTunnel = full; this.dns = resolver;
         this.privateKey = secret; this.serverPublicKey = serverKey;
     }
 
@@ -45,6 +50,7 @@ public final class VpnProfile {
             if (pos < 1) throw new IllegalArgumentException("Ожидается Key = Value");
             String key = section + "." + line.substring(0, pos).trim().toLowerCase(Locale.ROOT);
             if (!Arrays.asList("interface.name", "interface.privatekey", "interface.address", "interface.mtu",
+                    "interface.fulltunnel", "interface.dns",
                     "peer.publickey", "peer.endpoint", "peer.allowedips").contains(key)) {
                 throw new IllegalArgumentException("Неизвестный параметр: " + key);
             }
@@ -79,8 +85,29 @@ public final class VpnProfile {
         if (portNumber < 1 || portNumber > 65535 || host.trim().isEmpty()) throw new IllegalArgumentException("Неверный сервер или порт");
         int mtu = Integer.parseInt(fields.getOrDefault("interface.mtu", "1280"));
         if (mtu < 1280 || mtu > 9000) throw new IllegalArgumentException("MTU вне диапазона 1280..9000");
+        String fullValue = fields.getOrDefault("interface.fulltunnel", "false");
+        if (!fullValue.equalsIgnoreCase("true") && !fullValue.equalsIgnoreCase("false")) {
+            throw new IllegalArgumentException("FullTunnel: ожидается true или false");
+        }
+        boolean full = Boolean.parseBoolean(fullValue);
+        String dns = fields.getOrDefault("interface.dns", "1.1.1.1");
+        InetAddress dnsAddr = literalIp(dns);
+        if (dnsAddr.getAddress().length != 4 || dnsAddr.isAnyLocalAddress()) {
+            throw new IllegalArgumentException("DNS должен быть числовым IPv4");
+        }
+        if (full) {
+            if (localAddr.getAddress().length != 4) {
+                throw new IllegalArgumentException("FullTunnel пока поддерживает только IPv4");
+            }
+            // Avoid out-of-tunnel DNS lookups for the server itself.
+            InetAddress serverAddr = literalIp(host);
+            if (serverAddr.getAddress().length != 4 || serverAddr.isAnyLocalAddress()) {
+                throw new IllegalArgumentException("FullTunnel: Endpoint должен быть числовым IPv4");
+            }
+        }
         return new VpnProfile(host, portNumber, localAddr.getHostAddress(), prefix,
-                peerAddr.getHostAddress(), peerBits, mtu,
+                peerAddr.getHostAddress(), peerBits, mtu, full, dnsAddr.getHostAddress(),
+                localAddr.getAddress(), peerAddr.getAddress(),
                 decodeHex(required(fields, "interface.privatekey")),
                 decodeHex(required(fields, "peer.publickey")));
     }

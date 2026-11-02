@@ -124,12 +124,20 @@ public final class NetherVpnService extends VpnService {
                         .setSession("NetherVPN")
                         .setMtu(profile.mtu)
                         .addAddress(profile.localIp, profile.localPrefix)
-                        .addRoute(profile.peerIp, profile.peerPrefix)
                         .setBlocking(true);
+                if (profile.fullTunnel) {
+                    // All IPv4/DNS goes to the VPN, including public DNS resolvers.
+                    builder.addRoute("0.0.0.0", 0).addDnsServer(profile.dns);
+                    // Fail closed for IPv6 until server IPv6 forwarding exists:
+                    // catch the default IPv6 route, then discard IPv6 from TUN.
+                    builder.addAddress("fd77:77::2", 128).addRoute("::", 0);
+                } else {
+                    builder.addRoute(profile.peerIp, profile.peerPrefix);
+                }
                 ParcelFileDescriptor device = builder.establish();
                 if (device == null) throw new IOException("Android отказал в создании VPN TUN");
                 synchronized (lifecycleLock) { tun = device; }
-                publish("Подключено · только " + profile.peerIp);
+                publish(profile.fullTunnel ? "Подключено · весь IPv4 через VPN" : "Подключено · только " + profile.peerIp);
                 delay = 1;
                 transfer(udp, secure, device, profile);
             } catch (Exception error) {
@@ -186,6 +194,9 @@ public final class NetherVpnService extends VpnService {
                     int count = input.read(data);
                     if (count < 0) return;
                     if (count == 0 || count > profile.mtu) continue;
+                    // IPv6 traffic is captured but deliberately not transmitted:
+                    // gateway currently supports only routed/NATed IPv4.
+                    if (!validOutbound(data, count, profile)) continue;
                     send(udp, secure.seal(data, count));
                     bytesUp.addAndGet(count);
                     updateStats();
@@ -232,20 +243,31 @@ public final class NetherVpnService extends VpnService {
         }
     }
 
+    /** Authenticated encrypted return packets must be IPv4 destined to this client. */
     private static boolean validFromPeer(byte[] packet, VpnProfile profile) {
-        int version = packet.length == 0 ? 0 : (packet[0] >>> 4) & 15;
-        try {
-            byte[] source;
-            if (version == 4 && packet.length >= 20) {
-                int ihl = (packet[0] & 15) * 4;
-                if (ihl < 20 || ihl > packet.length) return false;
-                source = Arrays.copyOfRange(packet, 12, 16);
-            } else if (version == 6 && packet.length >= 40) {
-                source = Arrays.copyOfRange(packet, 8, 24);
-            } else return false;
-            byte[] allowed = java.net.InetAddress.getByName(profile.peerIp).getAddress();
-            return Arrays.equals(source, allowed);
-        } catch (Exception e) { return false; }
+        if (!validIPv4(packet, packet.length)) return false;
+        if (!addressEquals(packet, 16, profile.localBytes)) return false;
+        return profile.fullTunnel || addressEquals(packet, 12, profile.peerBytes);
+    }
+
+    /** Drop IPv6 and reject any source address not assigned by the server. */
+    private static boolean validOutbound(byte[] packet, int length, VpnProfile profile) {
+        return validIPv4(packet, length) && addressEquals(packet, 12, profile.localBytes);
+    }
+
+    private static boolean validIPv4(byte[] packet, int length) {
+        if (length < 20 || (packet[0] >>> 4 & 15) != 4) return false;
+        int ihl = (packet[0] & 15) * 4;
+        int total = (packet[2] & 255) * 256 + (packet[3] & 255);
+        return ihl >= 20 && ihl <= length && total == length;
+    }
+
+    private static boolean addressEquals(byte[] packet, int offset, byte[] ip) {
+        if (ip.length != 4 || packet.length < offset + 4) return false;
+        for (int i = 0; i < 4; i++) {
+            if (packet[offset + i] != ip[i]) return false;
+        }
+        return true;
     }
 
     private void closeCurrent() {
