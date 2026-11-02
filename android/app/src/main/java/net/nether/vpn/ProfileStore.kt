@@ -73,7 +73,7 @@ internal data class VpnProfile(
         private fun isIpv4Literal(value: String): Boolean {
             val blocks = value.split('.')
             return blocks.size == 4 && blocks.all {
-                it.isNotEmpty() && it.all(Char::isDigit) && it.toIntOrNull() in 0..255
+                it.isNotEmpty() && it.all(Char::isDigit) && it.toIntOrNull()?.let { n -> n in 0..255 } == true
             }
         }
     }
