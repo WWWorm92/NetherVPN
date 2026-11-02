@@ -88,9 +88,16 @@ func serveContinuous(ctx context.Context,c Config,identity noise.DHKey,authorize
   mu.Lock()
   p:=current
   if p==nil||!p.addr.IP.Equal(addr.IP)||p.addr.Port!=addr.Port {mu.Unlock();continue}
-  plain,e:=tunnel.DecodeIP(p.secure,data,c.MTU)
+  plain,e:=p.secure.Open(data)
+  if e==nil&&bytes.Equal(plain,[]byte("\\x00NVPN-PING-v1")) {
+   reply,sealErr:=p.secure.Seal([]byte("\\x00NVPN-PONG-v1"))
+   if sealErr==nil {_,sealErr=conn.WriteToUDP(reply,addr)}
+   if sealErr!=nil{log.Printf("server: keepalive response: %v",sealErr)}
+   mu.Unlock()
+   continue
+  }
   mu.Unlock()
-  if e!=nil||tunnel.VerifySource(plain,allowed)!=nil{continue}
+  if e!=nil||len(plain)>c.MTU||!tunnel.IsIP(plain)||tunnel.VerifySource(plain,allowed)!=nil{continue}
   if _,e=device.Write(plain);e!=nil {if errors.Is(e,context.Canceled){return nil};return e}
  }
 }
