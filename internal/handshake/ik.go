@@ -100,6 +100,13 @@ func (i *Initiator) Start() ([]byte, error) {
 // trusted local allowlist. Returned directional CipherStates are for
 // ordered Noise transport messages; they are NOT yet wired to UDP DATA.
 func (r *Responder) Respond(message []byte, authorize func([]byte) bool) ([]byte, *noise.CipherState, *noise.CipherState, error) {
+	response, out, in, err := r.RespondWithPayload(message, authorize, nil)
+	return response, out, in, err
+}
+
+// RespondWithPayload encrypts the responder payload inside Noise message 2.
+// Use it to bind session parameters to the authenticated handshake.
+func (r *Responder) RespondWithPayload(message []byte, authorize func([]byte) bool, payload []byte) ([]byte, *noise.CipherState, *noise.CipherState, error) {
 	if r.processed {
 		return nil, nil, nil, ErrBadState
 	}
@@ -114,16 +121,22 @@ func (r *Responder) Respond(message []byte, authorize func([]byte) bool) ([]byte
 	if len(clientPublic) != keySize || !authorize(bytes.Clone(clientPublic)) {
 		return nil, nil, nil, ErrUnauthorized
 	}
-	message2, initiatorToResponder, responderToInitiator, err := r.state.WriteMessage(nil, nil)
+	message2, initiatorToResponder, responderToInitiator, err := r.state.WriteMessage(nil, payload)
 	return message2, responderToInitiator, initiatorToResponder, err
 }
 
 // Finish authenticates the server response. Returned directional cipher
 // states apply to ordered transport use ONLY.
 func (i *Initiator) Finish(response []byte) (*noise.CipherState, *noise.CipherState, error) {
-	if !i.started {
-		return nil, nil, ErrBadState
-	}
-	_, outgoing, incoming, err := i.state.ReadMessage(nil, response)
+	_, outgoing, incoming, err := i.FinishWithPayload(response)
 	return outgoing, incoming, err
+}
+
+// FinishWithPayload authenticates the server and returns its encrypted payload.
+func (i *Initiator) FinishWithPayload(response []byte) ([]byte, *noise.CipherState, *noise.CipherState, error) {
+	if !i.started {
+		return nil, nil, nil, ErrBadState
+	}
+	payload, outgoing, incoming, err := i.state.ReadMessage(nil, response)
+	return payload, outgoing, incoming, err
 }
