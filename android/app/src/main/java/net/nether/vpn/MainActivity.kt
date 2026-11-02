@@ -89,7 +89,7 @@ class MainActivity : Activity() {
             maxLines = 12
             setTextColor(colors[3])
             setHintTextColor(colors[4])
-            hint = "[Interface]\nPrivateKey = ...\nAddress = 10.77.0.2/30\n\n[Peer]\nPublicKey = ...\nEndpoint = host:51830\nAllowedIPs = 10.77.0.1"
+            hint = "[Interface]\nPrivateKey = ...\nAddress = 10.77.0.3/32\nFullTunnel = true\nDNS = 1.1.1.1\n\n[Peer]\nPublicKey = ...\nEndpoint = 45.151.69.184:51830\nAllowedIPs = 10.77.0.1"
             setBackgroundColor(colors[1])
             setPadding(16, 16, 16, 16)
             inputType = android.text.InputType.TYPE_CLASS_TEXT or
@@ -115,9 +115,11 @@ class MainActivity : Activity() {
             toast("Сохранённый профиль удалён")
         }
         panel.addView(label(
-            "Тестовая версия: маршрутизируется только IP сервера внутри туннеля " +
-            "(AllowedIPs). Сервер NetherVPN пока не обеспечивает общий доступ в интернет. " +
-            "Не используйте для защиты конфиденциальных данных.", 13f, colors[4]))
+            "FullTunnel = true: весь IPv4 и DNS направляется через VPN; IPv6 блокируется. " +
+            "Для выхода в интернет на сервере требуется NAT. " +
+            "На Android включите «Постоянная VPN» и «Блокировать подключения без VPN», " +
+            "чтобы не допустить прямого трафика во время переподключения. " +
+            "Экспериментальная версия, не прошедшая аудит безопасности.", 13f, colors[4]))
         setContentView(outer)
         updateProfile()
         if (Build.VERSION.SDK_INT >= 33 &&
