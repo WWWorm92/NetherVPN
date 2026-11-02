@@ -1,10 +1,11 @@
 //go:build linux
+
 package app
 
 import (
  "bytes"
- "crypto/sha256"
  "context"
+ "crypto/sha256"
  "errors"
  "fmt"
  "log"
@@ -22,11 +23,18 @@ import (
 
 type activePeer struct {
  addr *net.UDPAddr
+ source netip.Addr
  secure *session.Session
 }
-// serveContinuous owns the UDP reader throughout its lifetime. No second
-// goroutine may ReadFromUDP on this socket.
-func serveContinuous(ctx context.Context,c Config,identity noise.DHKey,authorized []byte,allowed netip.Addr) error {
+type cachedInit struct {
+ response []byte
+ expires time.Time
+}
+
+// serveContinuous has a single UDP reader and a single TUN reader. All session
+// encryption/decryption, endpoint maps and reply writes are serialized by mu.
+// Every client has a distinct static key, assigned tunnel address and session.
+func serveContinuous(ctx context.Context,c Config,identity noise.DHKey,authorized map[[32]byte]netip.Addr) error {
  listen,err:=net.ResolveUDPAddr("udp",c.Listen)
  if err!=nil{return err}
  conn,err:=net.ListenUDP("udp",listen)
@@ -36,68 +44,108 @@ func serveContinuous(ctx context.Context,c Config,identity noise.DHKey,authorize
  if err!=nil{return err}
  defer device.Close()
  if err:=configureInterface(device,c.LocalAddress,c.MTU);err!=nil{return err}
+
  var mu sync.Mutex
- var current *activePeer
- // Duplicate INIT retransmissions must receive the original Noise reply.
- // Bounded response cache is intentionally short-lived and single-peer.
- type cachedInit struct { digest [32]byte; response []byte; addr string; expires time.Time }
- var cache *cachedInit
+ byIP:=make(map[netip.Addr]*activePeer)
+ byRemote:=make(map[string]*activePeer)
+ cache:=make(map[string]cachedInit)
  outgoingErr:=make(chan error,1)
+
  go func(){
-  buf:=make([]byte,c.MTU+1)
+  buffer:=make([]byte,c.MTU+1)
   for {
-   n,e:=device.Read(buf)
-   if e!=nil {outgoingErr<-e;return}
-   if n>c.MTU||!tunnel.IsIP(buf[:n]) {continue}
+   n,e:=device.Read(buffer)
+   if e!=nil {select{case outgoingErr<-e:default:};return}
+   if n>c.MTU || !tunnel.IsIP(buffer[:n]) {continue}
+   destination,e:=tunnel.DestinationIP(buffer[:n])
+   if e!=nil{continue}
    mu.Lock()
-   p:=current
-   if p!=nil {
-    payload,e:=p.secure.Seal(buf[:n])
-    if e==nil {_,e=conn.WriteToUDP(payload,p.addr)}
-    if e!=nil {log.Printf("server: send error: %v",e)}
+   peer:=byIP[destination]
+   if peer!=nil {
+    payload,e:=peer.secure.Seal(buffer[:n])
+    if e==nil{_,e=conn.WriteToUDP(payload,peer.addr)}
+    if e!=nil{log.Printf("server: send to %s failed: %v",destination,e)}
    }
    mu.Unlock()
   }
  }()
+
  buffer:=make([]byte,c.MTU+512)
  if len(buffer)<4096{buffer=make([]byte,4096)}
  for {
   if ctx.Err()!=nil{return nil}
-  select {case e:=<-outgoingErr:return fmt.Errorf("tun reader: %w",e);default:}
+  select {
+  case e:=<-outgoingErr:
+   if ctx.Err()!=nil{return nil}
+   return fmt.Errorf("tun reader: %w",e)
+  default:
+  }
   if e:=conn.SetReadDeadline(time.Now().Add(250*time.Millisecond));e!=nil{return e}
   n,addr,e:=conn.ReadFromUDP(buffer)
   if ne,ok:=e.(net.Error);ok&&ne.Timeout(){continue}
   if e!=nil {if ctx.Err()!=nil{return nil};return e}
   data:=buffer[:n]
-  if n>0&&data[0]==0xA1 {
+  remote:=addr.String()
+
+  if n>0 && data[0]==0xA1 {
    digest:=sha256.Sum256(data)
-   if cache!=nil&&time.Now().Before(cache.expires)&&cache.digest==digest&&cache.addr==addr.String() {
-    if _,e=conn.WriteToUDP(cache.response,addr);e!=nil{log.Printf("handshake: retry response failed: %v",e)}
+   cacheKey:=remote+":"+string(digest[:])
+   if existing,ok:=cache[cacheKey];ok&&time.Now().Before(existing.expires){
+    if _,e=conn.WriteToUDP(existing.response,addr);e!=nil{log.Printf("server: retry reply: %v",e)}
     continue
    }
-   secure,response,e:=transport.HandleInitiation(data,identity,func(candidate []byte)bool{return bytes.Equal(candidate,authorized)})
-   if e!=nil {log.Printf("handshake: rejected from %s: %v",addr,e);continue}
-   if _,e=conn.WriteToUDP(response,addr);e!=nil {log.Printf("handshake: reply failed: %v",e);continue}
+   if len(cache)>=128 {
+    now:=time.Now()
+    for key,entry:=range cache{if !now.Before(entry.expires){delete(cache,key)}}
+    // If all 128 entries are still fresh, stop accepting initiations briefly.
+    if len(cache)>=128{continue}
+   }
+   var selected netip.Addr
+   secure,response,e:=transport.HandleInitiation(data,identity,func(candidate []byte)bool{
+    if len(candidate)!=32{return false}
+    var key [32]byte
+    copy(key[:],candidate)
+    ip,ok:=authorized[key]
+    if ok{selected=ip}
+    return ok
+   })
+   if e!=nil {continue}
+   if _,e=conn.WriteToUDP(response,addr);e!=nil{log.Printf("server: handshake reply failed: %v",e);continue}
    mu.Lock()
-   current=&activePeer{addr:addr,secure:secure}
-   cache=&cachedInit{digest:digest,response:append([]byte(nil),response...),addr:addr.String(),expires:time.Now().Add(10*time.Second)}
+   if previous:=byIP[selected];previous!=nil{
+    delete(byRemote,previous.addr.String())
+   }
+   if previous:=byRemote[remote];previous!=nil{
+    delete(byIP,previous.source)
+   }
+   p:=&activePeer{addr:addr,source:selected,secure:secure}
+   byIP[selected]=p
+   byRemote[remote]=p
    mu.Unlock()
-   log.Printf("handshake: authenticated peer %s; session replaced",addr)
+   cache[cacheKey]=cachedInit{response:bytes.Clone(response),expires:time.Now().Add(10*time.Second)}
+   log.Printf("server: authenticated client %s from %s",selected,remote)
    continue
   }
+
   mu.Lock()
-  p:=current
-  if p==nil||!p.addr.IP.Equal(addr.IP)||p.addr.Port!=addr.Port {mu.Unlock();continue}
+  p:=byRemote[remote]
+  if p==nil {mu.Unlock();continue}
   plain,e:=p.secure.Open(data)
-  if e==nil&&bytes.Equal(plain,[]byte("\x00NVPN-PING-v1")) {
+  if e==nil && bytes.Equal(plain,[]byte("\x00NVPN-PING-v1")){
    reply,sealErr:=p.secure.Seal([]byte("\x00NVPN-PONG-v1"))
    if sealErr==nil {_,sealErr=conn.WriteToUDP(reply,addr)}
-   if sealErr!=nil{log.Printf("server: keepalive response: %v",sealErr)}
+   if sealErr!=nil{log.Printf("server: keepalive failed: %v",sealErr)}
+   mu.Unlock()
+   continue
+  }
+  if e!=nil||len(plain)>c.MTU||!tunnel.IsIP(plain)||tunnel.VerifySource(plain,p.source)!=nil{
    mu.Unlock()
    continue
   }
   mu.Unlock()
-  if e!=nil||len(plain)>c.MTU||!tunnel.IsIP(plain)||tunnel.VerifySource(plain,allowed)!=nil{continue}
-  if _,e=device.Write(plain);e!=nil {if errors.Is(e,context.Canceled){return nil};return e}
+  if _,e=device.Write(plain);e!=nil{
+   if errors.Is(e,context.Canceled)||ctx.Err()!=nil{return nil}
+   return e
+  }
  }
 }
