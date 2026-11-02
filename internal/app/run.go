@@ -48,7 +48,7 @@ func RunClient(ctx context.Context,c Config) error {
 	conn,err:=net.ListenUDP("udp",nil)
 	if err!=nil{return err}
 	defer conn.Close()
-	handshakeCtx,cancel:=context.WithTimeout(ctx,5*time.Second)
+	handshakeCtx,cancel:=context.WithTimeout(ctx,8*time.Second)
 	secure,err:=transport.DialHandshake(handshakeCtx,conn,peer,identity,pub)
 	cancel()
 	if err!=nil{return fmt.Errorf("handshake: %w",err)}
