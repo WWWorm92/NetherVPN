@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """NetherVPN Linux desktop client. No system routes changed by GUI."""
 import configparser
+import threading
 import os
 from pathlib import Path
 import shutil
@@ -35,6 +36,7 @@ class App(tk.Tk):
         BASE.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(BASE, 0o700)
         self.process = None
+        self.busy = False
         self.logfile = None
         self.log_offset = 0
         self.active = None
@@ -193,48 +195,62 @@ class App(tk.Tk):
             self.refresh()
             self.log("Профиль удалён")
 
+    def privileged(self, args, on_ok):
+        if self.busy:
+            return
+        self.busy = True
+        self.state.set("Выполняется операция…")
+        def run():
+            try:
+                proc = subprocess.run(["pkexec", *args], text=True,
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                      timeout=45, check=False)
+                if proc.returncode:
+                    raise RuntimeError(proc.stderr.strip() or "Команда завершилась с ошибкой")
+                self.after(0, on_ok)
+            except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+                message = str(exc)
+                self.after(0, lambda: self.log("Ошибка: " + message))
+                self.after(0, lambda: self.state.set("Ошибка управления подключением"))
+            finally:
+                self.after(0, lambda: setattr(self, "busy", False))
+        threading.Thread(target=run, daemon=True).start()
+
     def connect(self):
-        if self.process and self.process.poll() is None:
-            messagebox.showinfo("NetherVPN", "Текущий профиль уже запущен")
+        if self.busy:
             return
         profile = self.selected()
         if not profile:
-            messagebox.showinfo("NetherVPN", "Выберите или импортируйте профиль")
+            messagebox.showinfo("NetherVPN", "Выберите профиль")
             return
-        if not CLIENT.is_file():
-            messagebox.showerror("Нет клиента", "Соберите: go build -o bin/nether-client ./cmd/nether-client")
+        if not Path("/etc/systemd/system/nethervpn-client.service").exists():
+            messagebox.showerror("NetherVPN", "Установите клиентскую службу: bash scripts/install-desktop.sh")
             return
-        auth = shutil.which("pkexec")
-        if not auth:
-            messagebox.showerror("Нет polkit", "Установите пакет pkexec")
+        if not shutil.which("pkexec"):
+            messagebox.showerror("NetherVPN", "Не найден pkexec")
             return
-        try:
-            self.logfile = tempfile.TemporaryFile(mode="w+b")
-            self.log_offset = 0
-            self.process = subprocess.Popen([auth, str(CLIENT), "-config", str(profile)],
-                                            stdout=self.logfile, stderr=subprocess.STDOUT,
-                                            start_new_session=True)
-        except OSError as exc:
-            self.log("Ошибка запуска: " + str(exc))
-            messagebox.showerror("NetherVPN", str(exc))
-            return
+        # systemd exclusively owns the TUN, so closing GUI cannot strand it.
         self.active = profile
         self.since = time.monotonic()
-        self.authenticated = False
         self.previous_counters = None
-        self.state.set("Подключение…")
-        self.log("Запрос подключения: " + profile.stem)
+        def started():
+            self.log("Служба NetherVPN запущена: " + profile.stem)
+            self.state.set("Проверка соединения…")
+        def installed():
+            self.privileged(["/usr/bin/systemctl", "restart", "nethervpn-client.service"], started)
+        # Install a private root-owned snapshot; no keys on argv.
+        self.privileged(["/usr/bin/install", "-m", "600", "-o", "root", "-g", "root",
+                         str(profile), "/etc/nethervpn/client.conf"], installed)
 
     def disconnect(self):
-        if self.process and self.process.poll() is None:
-            try:
-                os.killpg(self.process.pid, signal.SIGTERM)
-                self.state.set("Отключение…")
-                self.log("Запрошено отключение")
-            except ProcessLookupError:
-                pass
-        else:
+        if self.busy:
+            return
+        def stopped():
+            self.active = None
+            self.previous_counters = None
             self.state.set("Не подключено")
+            self.log("Служба NetherVPN остановлена")
+        self.privileged(["/usr/bin/systemctl", "stop", "nethervpn-client.service"], stopped)
 
     def read_log(self):
         if not self.logfile:
@@ -271,32 +287,17 @@ class App(tk.Tk):
         return True
 
     def tick(self):
-        if self.process:
-            self.read_log()
-            if self.process.poll() is not None:
-                code = self.process.returncode
-                self.log("Клиент завершился (код " + str(code) + ")")
-                self.state.set("Отключено")
-                self.process = None
-                self.active = None
-                self.since = None
-                self.authenticated = False
-                self.previous_counters = None
-                self.speed.set("↓ — КиБ/с  ↑ — КиБ/с")
-                if self.logfile:
-                    self.logfile.close()
-                    self.logfile = None
-            else:
-                has_tun = self.stats()
-                self.state.set("Соединение установлено" if self.authenticated and has_tun else "Ожидание подключения / повторная попытка…")
-                if self.since:
-                    seconds = int(time.monotonic() - self.since)
-                    self.timing.set(f"{seconds // 60:02d}:{seconds % 60:02d}")
-        self.after(500, self.tick)
+        if self.active:
+            has_tun = self.stats()
+            self.state.set("Туннель запущен" if has_tun else "Ожидание интерфейса…")
+            if self.since:
+                seconds = int(time.monotonic() - self.since)
+                self.timing.set(f"{seconds // 60:02d}:{seconds % 60:02d}")
+        self.after(750, self.tick)
 
     def close_app(self):
         if self.process and self.process.poll() is None:
-            if not messagebox.askyesno("NetherVPN", "Отключить VPN и закрыть приложение?"):
+            if not messagebox.askyesno("NetherVPN", "Закрыть окно? Служба VPN продолжит работу."):
                 return
             self.disconnect()
         self.destroy()
