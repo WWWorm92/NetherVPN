@@ -5,12 +5,14 @@ All milestones require automated tests and reproducible instructions.
 ## M0: Repository bootstrap
 - [x] Project goals, architecture and threat-model drafts
 - [x] Go module and non-functional server/client entry points
-- [ ] CI for Go tests, vet and formatting
+- [x] CI configuration for Go tests, vet and formatting (run results not yet confirmed)
 - [ ] Decide Apache-2.0 vs another license
 
 ## M1: Protocol specification
-- [ ] Unambiguous handshake and packet wire format
-- [ ] Key schedule, rekey, anti-replay, forward secrecy analysis
+- [x] Draft fixed DATA header layout and codec tests (NOT authenticated)
+- [x] Draft 64-packet replay window and tests (caller must authenticate first)
+- [ ] Complete handshake wire format and security review
+- [ ] Key schedule, nonce derivation, rekey and forward secrecy analysis
 - [ ] Security and interoperability test vectors
 
 ## M2: Linux VPN prototype
