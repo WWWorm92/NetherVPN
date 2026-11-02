@@ -67,12 +67,11 @@ func RunServer(ctx context.Context,c Config) error {
 	conn,err:=net.ListenUDP("udp",listen)
 	if err!=nil{return err}
 	defer conn.Close()
-	if err:=conn.SetReadDeadline(time.Now().Add(15*time.Second));err!=nil{return err}
+	// Wait for an authorized peer instead of terminating after 15 seconds.
 	secure,peer,err:=transport.AcceptHandshake(conn,identity,func(candidate []byte)bool{
 		return bytes.Equal(candidate,pub)
 	})
 	if err!=nil{return fmt.Errorf("handshake: %w",err)}
-	if err:=conn.SetReadDeadline(time.Time{});err!=nil{return err}
 	device,err:=tun.Open(c.Interface)
 	if err!=nil{return err}
 	defer device.Close()
