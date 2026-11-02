@@ -58,6 +58,13 @@ func TestEncryptedIPBridge(t *testing.T){
 }
 
 func TestIPValidation(t *testing.T) {
+	ipv6 := make([]byte, 44)
+	ipv6[0] = 0x60
+	binary.BigEndian.PutUint16(ipv6[4:6], 4)
+	if !IsIP(ipv6) { t.Fatal("valid ipv6 rejected") }
+	ipv6[5] = 5
+	if IsIP(ipv6) { t.Fatal("invalid ipv6 length accepted") }
+
 	if !IsIP(ipv4()) { t.Fatal("ipv4 rejected") }
 	cases:=[][]byte{nil,{0x45},{0x60},{0x45,0,0,20}}
 	for _,packet:=range cases {

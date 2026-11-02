@@ -32,7 +32,7 @@ func IsIP(packet []byte) bool {
 		return total >= ihl && total == len(packet)
 	case 6:
 		if len(packet) < 40 { return false }
-		size := 40 + int(packet[4])<<8 + int(packet[5])
+		size := 40 + (int(packet[4]) << 8) + int(packet[5])
 		return size == len(packet)
 	default:
 		return false
