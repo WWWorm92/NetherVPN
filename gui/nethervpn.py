@@ -207,13 +207,14 @@ class App(tk.Tk):
                                       timeout=45, check=False)
                 if proc.returncode:
                     raise RuntimeError(proc.stderr.strip() or "Команда завершилась с ошибкой")
-                self.after(0, on_ok)
+                self.after(0, lambda: (setattr(self, "busy", False), on_ok()))
             except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
                 message = str(exc)
                 self.after(0, lambda: self.log("Ошибка: " + message))
                 self.after(0, lambda: self.state.set("Ошибка управления подключением"))
-            finally:
                 self.after(0, lambda: setattr(self, "busy", False))
+            finally:
+                pass
         threading.Thread(target=run, daemon=True).start()
 
     def connect(self):
@@ -296,10 +297,11 @@ class App(tk.Tk):
         self.after(750, self.tick)
 
     def close_app(self):
-        if self.process and self.process.poll() is None:
-            if not messagebox.askyesno("NetherVPN", "Закрыть окно? Служба VPN продолжит работу."):
-                return
-            self.disconnect()
+        if self.busy:
+            messagebox.showinfo("NetherVPN", "Дождитесь окончания операции")
+            return
+        if self.active and not messagebox.askyesno("NetherVPN", "Закрыть окно? VPN продолжит работать как служба."):
+            return
         self.destroy()
 
 if __name__ == "__main__":
