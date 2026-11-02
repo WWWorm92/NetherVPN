@@ -1,11 +1,13 @@
-# Experimental Linux client and server
+# Isolated Linux TUN integration lab
 
-Two CLI programs now call Noise IK UDP handshake, open TUN and launch bidirectional forwarding loops. These executables are **NOT safe to expose to the internet**.
+The script `scripts/linux-netns-lab.sh` creates two **temporary Linux network namespaces**, a veth underlay, two random X25519 device identities and server/client processes. It assigns tunnel addresses `10.77.0.1/30` and `10.77.0.2/30` and checks `ping` across the encrypted tunnel.
 
-Build with `go build ./cmd/nether-server` and `go build ./cmd/nether-client`.
+It requires Linux, root/CAP_NET_ADMIN, `iproute2`, `ping`, `timeout`, Go, and `/dev/net/tun`. Run only inside a disposable VM:
 
-Both programs accept hexadecimal private keys on the command line **for isolated test use only**. This exposes secrets to process listings and shell history. Secure file-based key storage and a device enrollment flow MUST replace it before real deployments. The repository contains no key material.
+```bash
+sudo bash scripts/linux-netns-lab.sh
+```
 
-The prototype does not automatically configure IP addresses, DNS, routes, firewall, forwarding, NAT, rekey or multi-client routing. Run only inside disposable Linux network namespaces with manual isolated TUN address assignment. Server currently supports a single active client and times out waiting for the first handshake.
+The EXIT trap kills child processes, deletes both namespaces and removes temporary key files. No host default routes, DNS, or NAT are modified. The namespaces and their interfaces are disposable. It is an optional privileged **lab test**, not enabled on shared CI runners.
 
-Known security gaps: replayed handshake initiations, retransmission, absence of rekey and server session expiry, no complete DoS protections, source-address policy on the receiving path only. UDP authentication is based on the Noise IK static keys but this is not a production VPN.
+**Caution:** the prototype still passes secret keys in process arguments (visible to process inspection); do not use real credentials or expose it to untrusted users. Other missing production features include rekey, session lifecycle, replay cache, DoS defenses, safe management, DNS leak protection and per-client forwarding. An observed successful ping only establishes a limited point-to-point proof of concept, not VPN security.

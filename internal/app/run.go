@@ -11,7 +11,6 @@ import (
 
 	"github.com/WWWorm92/NetherVPN/internal/transport"
 	"github.com/WWWorm92/NetherVPN/internal/tun"
-	"github.com/WWWorm92/NetherVPN/internal/tunnel"
 	"github.com/flynn/noise"
 )
 
