@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/WWWorm92/NetherVPN/internal/transport"
+ "github.com/WWWorm92/NetherVPN/internal/peers"
 	"github.com/WWWorm92/NetherVPN/internal/tun"
 	"github.com/flynn/noise"
 )
@@ -22,6 +23,7 @@ type Config struct {
 	AllowedSource string
 	LocalAddress string
 	MTU int
+ PeersDir string
 }
 
 func (c Config) validate() (noise.DHKey,[]byte,netip.Addr,error) {
@@ -63,7 +65,30 @@ func runClientOnce(ctx context.Context,c Config) error {
 func RunServer(ctx context.Context,c Config) error {
  identity,pub,source,err:=c.validate()
  if err!=nil{return err}
- return serveContinuous(ctx,c,identity,pub,source)
+ all:=make(map[[32]byte]netip.Addr)
+ var legacy [32]byte
+ copy(legacy[:],pub)
+ all[legacy]=source
+ used:=map[netip.Addr]bool{source:true}
+ subnet,err:=netip.ParsePrefix(c.LocalAddress)
+ if err!=nil||!subnet.Addr().Is4(){return errors.New("server: IPv4 Interface.Address CIDR is required")}
+ for _,entry:=range func() []peers.Peer {
+  registered,e:=peers.Load(c.PeersDir)
+  if e!=nil{err=e}
+  return registered
+ }(){
+  if err!=nil{break}
+  if !subnet.Contains(entry.IP)||used[entry.IP] {
+   return fmt.Errorf("server: duplicate or out-of-subnet client IP: %s",entry.IP)
+  }
+  if _,exists:=all[entry.PublicKey];exists{
+   return fmt.Errorf("server: duplicate public key for %s",entry.Name)
+  }
+  all[entry.PublicKey]=entry.IP
+  used[entry.IP]=true
+ }
+ if err!=nil{return err}
+ return serveContinuous(ctx,c,identity,all)
 }
 
 func RunClient(ctx context.Context,c Config) error {
