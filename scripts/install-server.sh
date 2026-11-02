@@ -2,6 +2,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 test -f /etc/nethervpn/server.conf || { echo 'Missing /etc/nethervpn/server.conf' >&2; exit 1; }
+# The server profile contains its private X25519 key.
+sudo chown root:root /etc/nethervpn/server.conf
+sudo chmod 0600 /etc/nethervpn/server.conf
 go build -o bin/nether-server ./cmd/nether-server
 go build -o bin/nether-admin ./cmd/nether-admin
 sudo install -o root -g root -m 0755 bin/nether-server /usr/local/bin/nether-server
