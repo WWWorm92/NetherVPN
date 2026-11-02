@@ -3,7 +3,12 @@
 Android 8+ (API 26+) application implementing a foreground Android
 `VpnService` and NetherVPN Noise IK encrypted datagrams.
 [GitHub Releases](https://github.com/WWWorm92/NetherVPN/releases)
-contains the latest debug-signed alpha APK. Source builds can be downloaded
+contains the latest debug-signed alpha APK (0.3-alpha). Since GitHub runners
+generate a new **debug signing certificate** for each build, updating a
+previous test APK may fail with a signature mismatch. Export/import your
+profile securely and uninstall the old alpha APK if Android refuses the new
+installation; removing the app erases its encrypted stored profile. Source
+builds can be downloaded
 from [Android CI](https://github.com/WWWorm92/NetherVPN/actions/workflows/android.yml).
 
 ## Provisioning (server)
