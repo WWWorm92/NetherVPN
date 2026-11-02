@@ -1,8 +1,7 @@
 package app
 
 import (
-	"bytes"
-	"context"
+		"context"
 	"errors"
 	"fmt"
 	"net"
@@ -60,21 +59,7 @@ func RunClient(ctx context.Context,c Config) error {
 }
 
 func RunServer(ctx context.Context,c Config) error {
-	identity,pub,source,err:=c.validate()
-	if err!=nil{return err}
-	listen,err:=net.ResolveUDPAddr("udp",c.Listen)
-	if err!=nil{return err}
-	conn,err:=net.ListenUDP("udp",listen)
-	if err!=nil{return err}
-	defer conn.Close()
-	// Wait for an authorized peer instead of terminating after 15 seconds.
-	secure,peer,err:=transport.AcceptHandshake(conn,identity,func(candidate []byte)bool{
-		return bytes.Equal(candidate,pub)
-	})
-	if err!=nil{return fmt.Errorf("handshake: %w",err)}
-	device,err:=tun.Open(c.Interface)
-	if err!=nil{return err}
-	defer device.Close()
-	if err:=configureInterface(device,c.LocalAddress,c.MTU);err!=nil{return err}
-	return runPumps(ctx,device,conn,peer,secure,c.MTU,source)
+ identity,pub,source,err:=c.validate()
+ if err!=nil{return err}
+ return serveContinuous(ctx,c,identity,pub,source)
 }

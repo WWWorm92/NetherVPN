@@ -79,3 +79,17 @@ func AcceptHandshake(conn *net.UDPConn, identity noise.DHKey, authorize func([]b
 		return s, peer, nil
 	}
 }
+
+// HandleInitiation authenticates one INIT packet, returning a response frame.
+// The caller owns UDP reads and must implement replay and rate-limit defenses.
+func HandleInitiation(frame []byte,identity noise.DHKey,authorize func([]byte)bool)(*session.Session,[]byte,error){
+ if len(frame)<2||frame[0]!=wireInit{return nil,nil,ErrHandshakeFrame}
+ responder,err:=handshake.NewResponder(identity);if err!=nil{return nil,nil,err}
+ var params [sessionParametersSize]byte
+ if _,err=rand.Read(params[:8]);err!=nil{return nil,nil,err}
+ binary.BigEndian.PutUint16(params[8:],1)
+ id:=binary.BigEndian.Uint64(params[:8]);if id==0{return nil,nil,ErrHandshakeFrame}
+ response,out,in,err:=responder.RespondWithPayload(frame[1:],authorize,params[:]);if err!=nil{return nil,nil,err}
+ secure,err:=session.New(out,in,id,1);if err!=nil{return nil,nil,err}
+ return secure,append([]byte{wireResponse},response...),nil
+}
