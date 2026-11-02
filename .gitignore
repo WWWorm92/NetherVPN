@@ -1,0 +1,20 @@
+# Go artifacts
+/bin/
+/dist/
+/coverage/
+*.test
+*.out
+
+# Credentials and local deployment
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.conf.local
+
+# Editors
+.idea/
+.vscode/
+.DS_Store
