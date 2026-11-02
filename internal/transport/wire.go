@@ -55,7 +55,6 @@ func DialHandshake(ctx context.Context, conn *net.UDPConn, peer *net.UDPAddr, id
 		}
 	}
 }
-}
 
 // AcceptHandshake handles exactly one UDP Noise IK initiation. Applications
 // MUST add a bounded replay cache, retries and rate limits before deployment.
