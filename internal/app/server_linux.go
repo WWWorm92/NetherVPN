@@ -3,6 +3,7 @@ package app
 
 import (
  "bytes"
+ "crypto/sha256"
  "context"
  "errors"
  "fmt"
@@ -37,6 +38,10 @@ func serveContinuous(ctx context.Context,c Config,identity noise.DHKey,authorize
  if err:=configureInterface(device,c.LocalAddress,c.MTU);err!=nil{return err}
  var mu sync.Mutex
  var current *activePeer
+ // Duplicate INIT retransmissions must receive the original Noise reply.
+ // Bounded response cache is intentionally short-lived and single-peer.
+ type cachedInit struct { digest [32]byte; response []byte; addr string; expires time.Time }
+ var cache *cachedInit
  outgoingErr:=make(chan error,1)
  go func(){
   buf:=make([]byte,c.MTU+1)
@@ -65,11 +70,17 @@ func serveContinuous(ctx context.Context,c Config,identity noise.DHKey,authorize
   if e!=nil {if ctx.Err()!=nil{return nil};return e}
   data:=buffer[:n]
   if n>0&&data[0]==0xA1 {
+   digest:=sha256.Sum256(data)
+   if cache!=nil&&time.Now().Before(cache.expires)&&cache.digest==digest&&cache.addr==addr.String() {
+    if _,e=conn.WriteToUDP(cache.response,addr);e!=nil{log.Printf("handshake: retry response failed: %v",e)}
+    continue
+   }
    secure,response,e:=transport.HandleInitiation(data,identity,func(candidate []byte)bool{return bytes.Equal(candidate,authorized)})
    if e!=nil {log.Printf("handshake: rejected from %s: %v",addr,e);continue}
    if _,e=conn.WriteToUDP(response,addr);e!=nil {log.Printf("handshake: reply failed: %v",e);continue}
    mu.Lock()
    current=&activePeer{addr:addr,secure:secure}
+   cache=&cachedInit{digest:digest,response:append([]byte(nil),response...),addr:addr.String(),expires:time.Now().Add(10*time.Second)}
    mu.Unlock()
    log.Printf("handshake: authenticated peer %s; session replaced",addr)
    continue
