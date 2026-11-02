@@ -51,10 +51,12 @@ func runClientOnce(ctx context.Context,c Config) error {
 	secure,err:=transport.DialHandshake(handshakeCtx,conn,peer,identity,pub)
 	cancel()
 	if err!=nil{return fmt.Errorf("handshake: %w",err)}
+	fmt.Println("client: authenticated handshake complete")
 	device,err:=tun.Open(c.Interface)
 	if err!=nil{return err}
 	defer device.Close()
 	if err:=configureInterface(device,c.LocalAddress,c.MTU);err!=nil{return err}
+	fmt.Println("client: encrypted tunnel active")
 	return runPumps(ctx,device,conn,peer,secure,c.MTU,source)
 }
 

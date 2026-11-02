@@ -39,6 +39,7 @@ class App(tk.Tk):
         self.log_offset = 0
         self.active = None
         self.since = None
+        self.authenticated = False
         self.items = []
         self.selected_name = None
         self.state = tk.StringVar(value="Не подключено")
@@ -216,6 +217,7 @@ class App(tk.Tk):
             return
         self.active = profile
         self.since = time.monotonic()
+        self.authenticated = False
         self.state.set("Подключение…")
         self.log("Запрос подключения: " + profile.stem)
 
@@ -238,6 +240,10 @@ class App(tk.Tk):
         content = self.logfile.read(32768)
         self.log_offset += len(content)
         for line in content.decode("utf-8", "replace").splitlines():
+            if "client: encrypted tunnel active" in line:
+                self.authenticated = True
+            if "client: " in line and "retrying in" in line:
+                self.authenticated = False
             self.log(line[:500])
 
     def stats(self):
@@ -264,11 +270,13 @@ class App(tk.Tk):
                 self.process = None
                 self.active = None
                 self.since = None
+                self.authenticated = False
                 if self.logfile:
                     self.logfile.close()
                     self.logfile = None
             else:
-                self.state.set("Туннель активен" if self.stats() else "Ожидание подключения…")
+                has_tun = self.stats()
+                self.state.set("Соединение установлено" if self.authenticated and has_tun else "Ожидание подключения / повторная попытка…")
                 if self.since:
                     seconds = int(time.monotonic() - self.since)
                     self.timing.set(f"{seconds // 60:02d}:{seconds % 60:02d}")
