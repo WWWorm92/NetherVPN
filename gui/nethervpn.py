@@ -40,6 +40,7 @@ class App(tk.Tk):
         self.active = None
         self.since = None
         self.authenticated = False
+        self.previous_counters = None
         self.items = []
         self.selected_name = None
         self.state = tk.StringVar(value="Не подключено")
@@ -47,6 +48,7 @@ class App(tk.Tk):
         self.timing = tk.StringVar(value="—")
         self.tx = tk.StringVar(value="—")
         self.rx = tk.StringVar(value="—")
+        self.speed = tk.StringVar(value="↓ — КиБ/с  ↑ — КиБ/с")
         self._ui()
         self.refresh()
         self.after(500, self.tick)
@@ -104,6 +106,7 @@ class App(tk.Tk):
             self.label(cell, title, 9, MUTED).pack(padx=10, pady=(9, 3))
             tk.Label(cell, textvariable=var, bg="#233247", fg=TEXT,
                      font=("DejaVu Sans", 12, "bold")).pack(anchor="w", padx=10, pady=(0, 10))
+        tk.Label(right, textvariable=self.speed, bg=PANEL, fg=ACCENT, font=("DejaVu Sans", 11, "bold"), anchor="w").pack(fill="x", padx=24, pady=(0, 10))
         self.label(right, "ЖУРНАЛ СОБЫТИЙ", 10, MUTED, "bold").pack(anchor="w", padx=24, pady=(5, 7))
         self.logbox = tk.Text(right, bg="#101827", fg="#c5d4e7", height=7,
                               font=("DejaVu Sans Mono", 9), state="disabled", relief="flat", wrap="word")
@@ -203,7 +206,7 @@ class App(tk.Tk):
             return
         auth = shutil.which("pkexec")
         if not auth:
-            messagebox.showerror("Нет polkit", "Установите пакет policykit-1")
+            messagebox.showerror("Нет polkit", "Установите пакет pkexec")
             return
         try:
             self.logfile = tempfile.TemporaryFile(mode="w+b")
@@ -218,6 +221,7 @@ class App(tk.Tk):
         self.active = profile
         self.since = time.monotonic()
         self.authenticated = False
+        self.previous_counters = None
         self.state.set("Подключение…")
         self.log("Запрос подключения: " + profile.stem)
 
@@ -256,6 +260,12 @@ class App(tk.Tk):
             rx = int((base / "rx_bytes").read_text())
         except (OSError, ValueError, configparser.Error):
             return False
+        now = time.monotonic()
+        if self.previous_counters:
+            old_tx, old_rx, old_time = self.previous_counters
+            seconds = max(now - old_time, 0.001)
+            self.speed.set(f"↓ {max(0, rx - old_rx) / seconds / 1024:.1f} КиБ/с  ↑ {max(0, tx - old_tx) / seconds / 1024:.1f} КиБ/с")
+        self.previous_counters = (tx, rx, now)
         self.tx.set(f"{tx / 1024:.1f} КиБ")
         self.rx.set(f"{rx / 1024:.1f} КиБ")
         return True
@@ -271,6 +281,8 @@ class App(tk.Tk):
                 self.active = None
                 self.since = None
                 self.authenticated = False
+                self.previous_counters = None
+                self.speed.set("↓ — КиБ/с  ↑ — КиБ/с")
                 if self.logfile:
                     self.logfile.close()
                     self.logfile = None
