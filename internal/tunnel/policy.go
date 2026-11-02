@@ -34,3 +34,21 @@ func VerifySource(packet []byte, assigned netip.Addr) error {
 	if source != assigned { return ErrUnauthorizedIP }
 	return nil
 }
+
+ 
+// DestinationIP identifies the client assigned to a return packet read from
+// the gateway TUN. Only validated IP datagrams are accepted.
+func DestinationIP(packet []byte) (netip.Addr,error) {
+ if !IsIP(packet){return netip.Addr{},ErrInvalidPacket}
+ switch packet[0]>>4{
+ case 4:
+  var dst [4]byte
+  copy(dst[:],packet[16:20])
+  return netip.AddrFrom4(dst),nil
+ case 6:
+  var dst [16]byte
+  copy(dst[:],packet[24:40])
+  return netip.AddrFrom16(dst),nil
+ default:return netip.Addr{},ErrInvalidPacket
+ }
+}
