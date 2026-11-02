@@ -1,9 +1,9 @@
 # Linux TUN backend and encrypted IP bridge (experimental)
 
-The `internal/tun` package opens `/dev/net/tun` with `TUNSETIFF` and returns an `os.File` reader/writer. No system routes, DNS, firewall, IP forwarding, interface addresses or NAT are changed automatically.
+The Linux `internal/tun` package opens `/dev/net/tun` using `TUNSETIFF`. The `internal/tunnel` package supports bounded packet forwarding using `PumpToUDP` and `PumpFromUDP` with mandatory packet policy callbacks.
 
-The `internal/tunnel` package provides `SendOne`, `ReceiveOne`, `EncodeIP` and `DecodeIP` to demonstrate authenticated UDP encapsulation of a bounded IP packet. CI tests use in-memory TUN-like readers/writers and loopback UDP sockets; root privileges are not needed.
+The server-side policy must verify that the source IP address of decrypted packets matches the authorized address for the particular session. `VerifySource` implements this comparison for IPv4 and IPv6. The policy callback must come from a trusted configuration, not a client-provided claim.
 
-**Not deployable as a VPN:** no persistent forwarding loop, session lifecycle, actual TUN integration, client source-IP authorization, routing or kill switch. UDP handshake retry, handshake replay protection beyond a memory cache, anti-amplification and rekey remain incomplete.
+**Not a production VPN:** these pumps are for a *single peer* and have not yet been connected to persistent executable client/server processes, dynamic session dispatch, routing, DNS or NAT. `PumpToUDP` needs an explicitly closed reader to stop if blocked. IPv4 fragments, IPv6 extension headers, offload behavior and MTU details need further review. Client roaming is not supported.
 
-Future integration must enforce per-client source IP assignments before writing into TUN, retain correct IP packet length and implement MTU/error handling. Use Linux network namespaces for privileged end-to-end tests instead of reconfiguring the host.
+No interfaces, addresses, routes, DNS, firewall or NAT configuration is modified automatically. Privileged e2e testing should use separate Linux network namespaces.
