@@ -12,8 +12,10 @@ public final class VpnProfile {
     public final String endpointHost;
     public final int endpointPort;
     public final String localIp;
+    public final byte[] localBytes;
     public final int localPrefix;
     public final String peerIp;
+    public final byte[] peerBytes;
     public final int peerPrefix;
     public final int mtu;
     public final boolean fullTunnel;
@@ -22,10 +24,10 @@ public final class VpnProfile {
     public final byte[] serverPublicKey;
 
     private VpnProfile(String host, int port, String local, int prefix, String peer, int peerBits,
-                       int mtu, boolean full, String resolver, byte[] secret, byte[] serverKey) {
+                       int mtu, boolean full, String resolver, byte[] localRaw, byte[] peerRaw, byte[] secret, byte[] serverKey) {
         this.endpointHost = host; this.endpointPort = port;
-        this.localIp = local; this.localPrefix = prefix;
-        this.peerIp = peer; this.peerPrefix = peerBits; this.mtu = mtu;
+        this.localIp = local; this.localPrefix = prefix; this.localBytes = localRaw.clone();
+        this.peerIp = peer; this.peerPrefix = peerBits; this.peerBytes = peerRaw.clone(); this.mtu = mtu;
         this.fullTunnel = full; this.dns = resolver;
         this.privateKey = secret; this.serverPublicKey = serverKey;
     }
@@ -105,6 +107,7 @@ public final class VpnProfile {
         }
         return new VpnProfile(host, portNumber, localAddr.getHostAddress(), prefix,
                 peerAddr.getHostAddress(), peerBits, mtu, full, dnsAddr.getHostAddress(),
+                localAddr.getAddress(), peerAddr.getAddress(),
                 decodeHex(required(fields, "interface.privatekey")),
                 decodeHex(required(fields, "peer.publickey")));
     }
