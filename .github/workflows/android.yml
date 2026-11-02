@@ -20,7 +20,10 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: Install Android SDK
-        run: |\n          SDKMGR=$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -name sdkmanager -type f | head -n 1)\n          test -n "$SDKMGR"\n          "$SDKMGR" "platforms;android-35" "build-tools;35.0.0"
+        run: |
+          SDKMGR=$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -name sdkmanager -type f | head -n 1)
+          test -n "$SDKMGR"
+          "$SDKMGR" "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
