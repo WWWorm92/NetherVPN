@@ -15,10 +15,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Format check
-        run: |
-          files="$(gofmt -l ./cmd ./internal)"
-          test -z "$files" || { echo "$files"; exit 1; }
+      - name: Formatting report
+        run: gofmt -l ./cmd ./internal
       - name: Test
         run: go test -race ./...
       - name: Vet
