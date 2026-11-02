@@ -29,7 +29,6 @@ nat=(-t nat POSTROUTING -s "$cidr" -o "$wan" -j MASQUERADE)
 out=(FORWARD -i "$tun" -o "$wan" -s "$cidr" -j ACCEPT)
 back=(FORWARD -i "$wan" -o "$tun" -d "$cidr" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT)
 
-present() { local rule; rule="$1"; shift; iptables "$rule" -C "$@" >/dev/null 2>&1; }
 insert_once() {
   local chain="$1"; shift
   if ! iptables -C "$chain" "$@" 2>/dev/null; then iptables -I "$chain" 1 "$@"; fi
@@ -41,16 +40,27 @@ delete_once() {
 
 case "$action" in
 enable)
-  sysctl -w net.ipv4.ip_forward=1
   sysctlfile=/etc/sysctl.d/99-nethervpn-forward.conf
   if [[ -e "$sysctlfile" && "$(cat "$sysctlfile")" != 'net.ipv4.ip_forward = 1' ]]; then
     echo "Refusing to overwrite $sysctlfile" >&2; exit 1
   fi
+  sysctl -w net.ipv4.ip_forward=1
   printf 'net.ipv4.ip_forward = 1\n' > "$sysctlfile"
   if ! iptables -t nat -C "${nat[@]:2}" 2>/dev/null; then iptables -t nat -A "${nat[@]:2}"; fi
   insert_once "${out[@]}"
   insert_once "${back[@]}"
+  # This root-only file is read by the opt-in systemd persistence unit.
+  install -d -m 0700 /etc/nethervpn
+  config_file=/etc/nethervpn/full-tunnel.env
+  if [[ -e "$config_file" && ! -f "$config_file" ]]; then
+    echo "Unsafe $config_file" >&2; exit 1
+  fi
+  tmp_file="$(mktemp /etc/nethervpn/.full-tunnel.XXXXXX)"
+  chmod 0600 "$tmp_file"
+  printf 'WAN_INTERFACE=%s\nVPN_CIDR=%s\nTUN_NAME=%s\n' "$wan" "$cidr" "$tun" > "$tmp_file"
+  mv -f "$tmp_file" "$config_file"
   echo "IPv4 forwarding/NAT enabled: $cidr via $wan; VPN interface $tun"
+  echo "Persistent boot service: sudo systemctl enable --now nethervpn-full-tunnel.service"
   echo "Ensure UDP 51830 is permitted by your INPUT firewall."
   ;;
 disable)
