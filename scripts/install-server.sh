@@ -9,6 +9,7 @@ sudo install -o root -g root -m 0755 bin/nether-admin /usr/local/bin/nether-admi
 sudo install -d -o root -g root -m 0700 /etc/nethervpn/peers /etc/nethervpn/clients
 sudo install -o root -g root -m 0755 scripts/configure-full-tunnel.sh /usr/local/sbin/nethervpn-full-tunnel
 sudo install -o root -g root -m 0644 packaging/systemd/nethervpn-server.service /etc/systemd/system/nethervpn-server.service
+sudo install -o root -g root -m 0644 packaging/systemd/nethervpn-full-tunnel.service /etc/systemd/system/nethervpn-full-tunnel.service
 sudo systemctl daemon-reload
 echo 'Installed nether-server, nether-admin, nethervpn-full-tunnel.'
 echo 'Restart: sudo systemctl restart nethervpn-server'
