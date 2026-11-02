@@ -1,79 +1,191 @@
 package net.nether.vpn
 
 import android.app.Activity
-import android.os.Bundle
+import android.content.Intent
 import android.graphics.Color
+import android.net.VpnService
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.ViewGroup
 import android.widget.*
-import java.net.InetSocketAddress
-import java.net.Socket
-import java.util.concurrent.Executors
+import java.nio.charset.StandardCharsets
+import java.util.Locale
 
-/** Diagnostic prototype; no VpnService tunnel is established. */
+/** Minimal Android 8+ configuration and status screen. */
 class MainActivity : Activity() {
- private val io = Executors.newSingleThreadExecutor()
- private lateinit var status: TextView
- private lateinit var endpoint: EditText
- private lateinit var profile: EditText
- override fun onCreate(savedInstanceState: Bundle?) {
-  super.onCreate(savedInstanceState)
-  val prefs = getSharedPreferences("nether_test", MODE_PRIVATE)
-  val panel = LinearLayout(this).apply {
-   orientation = LinearLayout.VERTICAL
-   setPadding(42, 64, 42, 24)
-   setBackgroundColor(Color.rgb(16,24,39))
-  }
-  fun text(content: String, size: Float): TextView = TextView(this).apply {
-   text=content; textSize=size; setTextColor(Color.WHITE)
-  }
-  panel.addView(text("◈  NetherVPN", 26f))
-  panel.addView(text("Android · тестовая версия", 14f))
-  panel.addView(text("Сервер (хост:порт)", 16f))
-  endpoint = EditText(this).apply {
-   setSingleLine(true); setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY)
-   hint="45.151.69.184:51830"
-   setText(prefs.getString("endpoint","45.151.69.184:51830"))
-  }
-  panel.addView(endpoint)
-  panel.addView(text("Конфигурация для проверки (без PrivateKey)", 14f))
-  profile = EditText(this).apply {
-   minLines=4; maxLines=8; setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY)
-   hint="[Interface] ... [Peer] ..."
-   setText(prefs.getString("profile",""))
-  }
-  panel.addView(profile, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 350))
-  val save=Button(this).apply { text="Сохранить параметры" }
-  save.setOnClickListener {
-   val safe=profile.text.toString().lineSequence()
-     .filterNot { it.trim().startsWith("PrivateKey",true) }.joinToString("\n")
-   prefs.edit().putString("endpoint",endpoint.text.toString().trim()).putString("profile",safe).apply()
-   profile.setText(safe)
-   status.text="Параметры сохранены без приватного ключа"
-  }
-  panel.addView(save)
-  val test=Button(this).apply { text="Проверить DNS и сеть" }
-  panel.addView(test)
-  status=text("VPN не подключён. Это диагностический прототип.",15f)
-  panel.addView(status)
-  test.setOnClickListener {
-   val host=endpoint.text.toString().trim().substringBeforeLast(":")
-   val port=endpoint.text.toString().trim().substringAfterLast(":").toIntOrNull()
-   if(port==null || port !in 1..65535 || host.isEmpty()) {
-    status.text="Неверный адрес"; return@setOnClickListener
-   }
-   status.text="Проверка DNS…"
-   io.execute {
-    val result=try {
-     val addresses=java.net.InetAddress.getAllByName(host)
-     "DNS: "+addresses.joinToString { it.hostAddress ?: "?" }+
-      "\nUDP-доступность и Noise handshake НЕ проверены."
-    } catch(e:Exception) { "Сеть/DNS: "+e.javaClass.simpleName }
-    runOnUiThread {status.text=result}
-   }
-  }
-  val note=text("⚠ Нет VpnService и Noise IK. Это НЕ VPN-подключение.\nНе вводите секретный ключ в тестовое приложение.",13f)
-  panel.addView(note)
-  val scroll=ScrollView(this); scroll.addView(panel); setContentView(scroll)
- }
- override fun onDestroy() { io.shutdownNow(); super.onDestroy() }
+    private val handler = Handler(Looper.getMainLooper())
+    private lateinit var editor: EditText
+    private lateinit var status: TextView
+    private lateinit var traffic: TextView
+    private lateinit var profileStatus: TextView
+    private val requestVpn = 21
+    private val requestFile = 22
+    private val colors = intArrayOf(Color.rgb(14, 22, 38), Color.rgb(25, 38, 59),
+        Color.rgb(72, 206, 178), Color.WHITE, Color.rgb(164, 184, 207))
+
+    private val poll = object : Runnable {
+        override fun run() {
+            val preferences = getSharedPreferences(NetherVpnService.PREFS, MODE_PRIVATE)
+            status.text = preferences.getString("state", "Не подключено")
+            val tx = preferences.getLong("tx", 0)
+            val rx = preferences.getLong("rx", 0)
+            traffic.text = String.format(Locale.US, "↑ %.1f КиБ     ↓ %.1f КиБ",
+                tx / 1024.0, rx / 1024.0)
+            handler.postDelayed(this, 1000)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val outer = ScrollView(this).apply { setBackgroundColor(colors[0]) }
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 55, 32, 40)
+        }
+        outer.addView(panel)
+        fun label(value: String, size: Float, color: Int = colors[3]): TextView =
+            TextView(this).apply {
+                text = value
+                textSize = size
+                setTextColor(color)
+                setPadding(0, 0, 0, 12)
+            }
+        fun action(value: String, click: () -> Unit) {
+            val button = Button(this).apply {
+                text = value
+                isAllCaps = false
+                setOnClickListener { click() }
+            }
+            panel.addView(button, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        panel.addView(label("◈  NetherVPN", 29f))
+        panel.addView(label("Android · экспериментальный VPN-клиент", 14f, colors[4]))
+        panel.addView(label("СОСТОЯНИЕ СОЕДИНЕНИЯ", 12f, colors[2]))
+        status = label("Не подключено", 21f)
+        traffic = label("↑ 0 КиБ     ↓ 0 КиБ", 15f, colors[2])
+        panel.addView(status)
+        panel.addView(traffic)
+        action("Подключить") { connect() }
+        action("Отключить") {
+            startService(Intent(this, NetherVpnService::class.java)
+                .setAction(NetherVpnService.DISCONNECT))
+        }
+        panel.addView(label("ПРОФИЛЬ (.conf)", 15f, colors[2]))
+        profileStatus = label("Профиль не загружен", 14f, colors[4])
+        panel.addView(profileStatus)
+        action("Импортировать файл .conf") {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+            }
+            startActivityForResult(intent, requestFile)
+        }
+        panel.addView(label("Или вставьте конфигурацию ниже и сохраните", 13f, colors[4]))
+        editor = EditText(this).apply {
+            minLines = 6
+            maxLines = 12
+            setTextColor(colors[3])
+            setHintTextColor(colors[4])
+            hint = "[Interface]\nPrivateKey = ...\nAddress = 10.77.0.2/30\n\n[Peer]\nPublicKey = ...\nEndpoint = host:51830\nAllowedIPs = 10.77.0.1"
+            setBackgroundColor(colors[1])
+            setPadding(16, 16, 16, 16)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
+        panel.addView(editor, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        action("Сохранить профиль") {
+            try {
+                SecretStore.save(this, editor.text.toString())
+                editor.text.clear() // Avoid lingering private keys in the editor.
+                updateProfile()
+                toast("Профиль сохранён с шифрованием Android Keystore")
+            } catch (e: Exception) {
+                toast("Ошибка: ${e.message}")
+            }
+        }
+        action("Удалить профиль") {
+            SecretStore.clear(this)
+            editor.text.clear()
+            updateProfile()
+            toast("Сохранённый профиль удалён")
+        }
+        panel.addView(label(
+            "Тестовая версия: маршрутизируется только IP сервера внутри туннеля " +
+            "(AllowedIPs). Сервер NetherVPN пока не обеспечивает общий доступ в интернет. " +
+            "Не используйте для защиты конфиденциальных данных.", 13f, colors[4]))
+        setContentView(outer)
+        updateProfile()
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 55)
+        }
+    }
+
+    private fun updateProfile() {
+        profileStatus.text = if (SecretStore.exists(this))
+            "Профиль сохранён (ключи защищены Keystore)"
+        else "Профиль не загружен"
+    }
+
+    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+
+    private fun connect() {
+        try {
+            if (editor.text.isNotBlank()) {
+                SecretStore.save(this, editor.text.toString())
+                editor.text.clear()
+                updateProfile()
+            }
+            VpnProfile.parse(SecretStore.load(this))
+            val permission = VpnService.prepare(this)
+            if (permission != null) startActivityForResult(permission, requestVpn)
+            else startTunnel()
+        } catch (e: Exception) {
+            toast("Ошибка конфигурации: ${e.message}")
+        }
+    }
+
+    private fun startTunnel() {
+        val intent = Intent(this, NetherVpnService::class.java).setAction(NetherVpnService.CONNECT)
+        if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent)
+        else startService(intent)
+    }
+
+    @Deprecated("Platform VPN consent result API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == requestVpn) {
+            if (resultCode == RESULT_OK) startTunnel() else toast("Разрешение VPN не предоставлено")
+        }
+        if (requestCode == requestFile && resultCode == RESULT_OK && data?.data != null) {
+            try {
+                val bytes = contentResolver.openInputStream(data.data!!)!!.use { stream ->
+                    val out = java.io.ByteArrayOutputStream()
+                    val buf = ByteArray(4096)
+                    while (true) {
+                        val n = stream.read(buf)
+                        if (n < 0) break
+                        if (out.size() + n > 65536) throw IllegalArgumentException("Файл слишком большой")
+                        out.write(buf, 0, n)
+                    }
+                    out.toByteArray()
+                }
+                SecretStore.save(this, String(bytes, StandardCharsets.UTF_8))
+                editor.text.clear()
+                updateProfile()
+                toast("Профиль импортирован")
+            } catch (e: Exception) {
+                toast("Ошибка импорта: ${e.message}")
+            }
+        }
+    }
+
+    override fun onResume() { super.onResume(); handler.post(poll) }
+    override fun onPause() { handler.removeCallbacks(poll); super.onPause() }
 }
