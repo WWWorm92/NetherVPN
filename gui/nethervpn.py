@@ -6,6 +6,7 @@ import shutil
 import signal
 import subprocess
 import tkinter as tk
+import time
 from tkinter import filedialog, messagebox, ttk
 
 HOME = pathlib.Path.home()
@@ -21,6 +22,8 @@ class Window(tk.Tk):
         self.minsize(540, 360)
         self.proc = None
         self.profiles = []
+        self.active_profile = ''
+        self.started_at = None
         PROFILES.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(PROFILES, 0o700)
         wrapper = ttk.Frame(self, padding=20)
@@ -37,6 +40,8 @@ class Window(tk.Tk):
         ttk.Button(bar, text="Удалить", command=self.delete_profile).pack(side="left")
         self.status = tk.StringVar(value="Не подключено")
         ttk.Label(wrapper, textvariable=self.status).pack(anchor="w")
+        self.stats = tk.StringVar(value="Трафик: —")
+        ttk.Label(wrapper, textvariable=self.stats).pack(anchor="w", pady=6)
         ttk.Label(wrapper, text="Нет изменения default route, DNS или системных VPN.", foreground="gray").pack(anchor="w", pady=(6, 0))
         self.refresh()
         self.after(350, self.poll)
@@ -91,6 +96,8 @@ class Window(tk.Tk):
             return
         try:
             self.proc = subprocess.Popen([auth, str(BINARY), "-config", str(path)], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            self.active_profile = path.stem
+            self.started_at = time.monotonic()
             self.status.set("Подключение: " + path.stem)
         except OSError as e:
             messagebox.showerror("NetherVPN", str(e))
@@ -108,6 +115,18 @@ class Window(tk.Tk):
             path.unlink()
             self.refresh()
 
+    def update_stats(self):
+        base = pathlib.Path("/sys/class/net/nvpn0/statistics")
+        try:
+            tx = int((base / "tx_bytes").read_text())
+            rx = int((base / "rx_bytes").read_text())
+        except (OSError, ValueError):
+            self.stats.set("Трафик: —")
+            return False
+        elapsed = int(time.monotonic() - self.started_at) if self.started_at else 0
+        self.stats.set(f"Отправлено {tx / 1024:.1f} КиБ · Получено {rx / 1024:.1f} КиБ · {elapsed // 60} мин")
+        return True
+
     def poll(self):
         if self.proc and self.proc.poll() is not None:
             # Surface errors without exposing profile private key in command-line.
@@ -115,6 +134,11 @@ class Window(tk.Tk):
             self.status.set("Отключено" + (": " + err[-200:] if err else ""))
             self.proc.stderr.close()
             self.proc = None
+        elif self.proc and self.proc.poll() is None:
+            if self.update_stats():
+                self.status.set("Туннель активен: " + self.active_profile)
+            else:
+                self.status.set("Ожидание подключения / переподключение: " + self.active_profile)
         self.after(350, self.poll)
 
     def on_close(self):
