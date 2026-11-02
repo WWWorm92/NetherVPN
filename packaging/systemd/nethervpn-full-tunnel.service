@@ -1,0 +1,17 @@
+[Unit]
+Description=NetherVPN scoped IPv4 forwarding and masquerade
+Wants=network-online.target
+After=network-online.target
+Before=nethervpn-server.service
+ConditionPathExists=/etc/nethervpn/full-tunnel.env
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/etc/nethervpn/full-tunnel.env
+ExecStart=/usr/local/sbin/nethervpn-full-tunnel enable ${WAN_INTERFACE} ${VPN_CIDR} ${TUN_NAME}
+ExecStop=/usr/local/sbin/nethervpn-full-tunnel disable ${WAN_INTERFACE} ${VPN_CIDR} ${TUN_NAME}
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target
