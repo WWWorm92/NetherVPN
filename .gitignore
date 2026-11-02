@@ -4,16 +4,17 @@
 /coverage/
 *.test
 *.out
-
 # Credentials and local deployment
 .env
 .env.*
 !.env.example
 *.key
+*.keys
 *.pem
 *.p12
+*.conf
+!examples/*.conf
 *.conf.local
-
 # Editors
 .idea/
 .vscode/

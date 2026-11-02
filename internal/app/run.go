@@ -21,6 +21,7 @@ type Config struct {
 	PrivateKey string
 	PeerPublicKey string
 	AllowedSource string
+	LocalAddress string
 	MTU int
 }
 
@@ -55,6 +56,7 @@ func RunClient(ctx context.Context,c Config) error {
 	device,err:=tun.Open(c.Interface)
 	if err!=nil{return err}
 	defer device.Close()
+	if err:=configureInterface(device,c.LocalAddress,c.MTU);err!=nil{return err}
 	return runPumps(ctx,device,conn,peer,secure,c.MTU,source)
 }
 
