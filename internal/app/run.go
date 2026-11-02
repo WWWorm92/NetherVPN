@@ -39,7 +39,7 @@ func (c Config) validate() (noise.DHKey,[]byte,netip.Addr,error) {
 
 // RunClient is a single-peer Linux prototype. It never changes default routes,
 // DNS, NAT or forwarding. With LocalAddress set, it configures its TUN address.
-func RunClient(ctx context.Context,c Config) error {
+func runClientOnce(ctx context.Context,c Config) error {
 	identity,pub,source,err:=c.validate()
 	if err!=nil{return err}
 	peer,err:=net.ResolveUDPAddr("udp",c.Peer)
@@ -62,4 +62,18 @@ func RunServer(ctx context.Context,c Config) error {
  identity,pub,source,err:=c.validate()
  if err!=nil{return err}
  return serveContinuous(ctx,c,identity,pub,source)
+}
+
+func RunClient(ctx context.Context,c Config) error {
+ delay:=time.Second
+ for {
+  if ctx.Err()!=nil{return nil}
+  err:=runClientOnce(ctx,c)
+  if ctx.Err()!=nil{return nil}
+  if err==nil{return nil}
+  fmt.Printf("client: %v; retrying in %s\n",err,delay)
+  timer:=time.NewTimer(delay)
+  select{case <-ctx.Done():timer.Stop();return nil;case <-timer.C:}
+  if delay<8*time.Second{delay*=2}
+ }
 }
