@@ -11,7 +11,7 @@ import (
  "strings"
 )
 type Profile struct {
- Name, PrivateKey, Address, ListenPort, PublicKey, Endpoint, AllowedIP, Interface string
+ Name, PrivateKey, Address, ListenPort, ListenAddress, PublicKey, Endpoint, AllowedIP, Interface string
  MTU int
 }
 func Parse(data string)(Profile,error){
@@ -30,6 +30,7 @@ func Parse(data string)(Profile,error){
   case "interface.name":p.Interface=val
   case "interface.mtu":i,e:=strconv.Atoi(val);if e!=nil{return p,fmt.Errorf("profile: invalid MTU")};p.MTU=i
   case "interface.listenport":p.ListenPort=val
+  case "interface.listenaddress":p.ListenAddress=val
   case "peer.publickey":p.PublicKey=val
   case "peer.endpoint":p.Endpoint=val
   case "peer.allowedips":p.AllowedIP=val
@@ -39,6 +40,7 @@ func Parse(data string)(Profile,error){
  if p.PrivateKey==""||p.PublicKey==""||p.Address==""||p.AllowedIP==""{return p,errors.New("profile: missing required key")}
  if _,e:=netip.ParsePrefix(p.Address);e!=nil{return p,fmt.Errorf("profile: invalid Address: %w",e)}
  if _,e:=netip.ParseAddr(p.AllowedIP);e!=nil{return p,fmt.Errorf("profile: AllowedIPs must be one peer IP: %w",e)}
+ if p.ListenAddress!=""{if _,e:=netip.ParseAddr(p.ListenAddress);e!=nil{return p,fmt.Errorf("profile: invalid ListenAddress: %w",e)}}
  if p.MTU<40||p.MTU>9000{return p,errors.New("profile: invalid MTU")}
  return p,nil
 }

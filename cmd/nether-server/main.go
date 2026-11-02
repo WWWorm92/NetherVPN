@@ -22,7 +22,8 @@ func main(){
  if *config!=""{
   p,err:=profile.Load(*config);if err!=nil{fmt.Fprintln(os.Stderr,err);os.Exit(1)}
   port:=p.ListenPort;if port==""{port="51830"}
-  c=app.Config{Interface:p.Interface,Listen:"0.0.0.0:"+port,PrivateKey:p.PrivateKey,PeerPublicKey:p.PublicKey,AllowedSource:p.AllowedIP,LocalAddress:p.Address,MTU:p.MTU}
+  address:=p.ListenAddress;if address==""{address="0.0.0.0"}
+  c=app.Config{Interface:p.Interface,Listen:address+":"+port,PrivateKey:p.PrivateKey,PeerPublicKey:p.PublicKey,AllowedSource:p.AllowedIP,LocalAddress:p.Address,MTU:p.MTU}
  }
  ctx,stop:=signal.NotifyContext(context.Background(),os.Interrupt,syscall.SIGTERM);defer stop()
  if err:=app.RunServer(ctx,c);err!=nil{fmt.Fprintln(os.Stderr,err);os.Exit(1)}
