@@ -243,37 +243,31 @@ public final class NetherVpnService extends VpnService {
         }
     }
 
-    /**
-     * Validate transport IP framing and destination before inserting a packet
-     * into Android TUN. A full-tunnel reply can originate from ANY public IP,
-     * not only the gateway IP.
-     */
+    /** Authenticated encrypted return packets must be IPv4 destined to this client. */
     private static boolean validFromPeer(byte[] packet, VpnProfile profile) {
-        if (packet.length < 20 || (packet[0] >>> 4 & 15) != 4) return false;
-        int ihl = (packet[0] & 15) * 4;
-        int total = (packet[2] & 255) * 256 + (packet[3] & 255);
-        if (ihl < 20 || ihl > packet.length || total != packet.length || total < ihl) return false;
-        try {
-            byte[] expectedDestination = java.net.InetAddress.getByName(profile.localIp).getAddress();
-            byte[] destination = Arrays.copyOfRange(packet, 16, 20);
-            if (!Arrays.equals(expectedDestination, destination)) return false;
-            if (!profile.fullTunnel) {
-                byte[] allowed = java.net.InetAddress.getByName(profile.peerIp).getAddress();
-                return Arrays.equals(Arrays.copyOfRange(packet, 12, 16), allowed);
-            }
-            return true;
-        } catch (Exception ignored) { return false; }
+        if (!validIPv4(packet, packet.length)) return false;
+        if (!addressEquals(packet, 16, profile.localBytes)) return false;
+        return profile.fullTunnel || addressEquals(packet, 12, profile.peerBytes);
     }
 
+    /** Drop IPv6 and reject any source address not assigned by the server. */
     private static boolean validOutbound(byte[] packet, int length, VpnProfile profile) {
+        return validIPv4(packet, length) && addressEquals(packet, 12, profile.localBytes);
+    }
+
+    private static boolean validIPv4(byte[] packet, int length) {
         if (length < 20 || (packet[0] >>> 4 & 15) != 4) return false;
         int ihl = (packet[0] & 15) * 4;
         int total = (packet[2] & 255) * 256 + (packet[3] & 255);
-        if (ihl < 20 || total != length || ihl > length) return false;
-        try {
-            byte[] assigned = java.net.InetAddress.getByName(profile.localIp).getAddress();
-            return Arrays.equals(Arrays.copyOfRange(packet, 12, 16), assigned);
-        } catch (Exception ignored) { return false; }
+        return ihl >= 20 && ihl <= length && total == length;
+    }
+
+    private static boolean addressEquals(byte[] packet, int offset, byte[] ip) {
+        if (ip.length != 4 || packet.length < offset + 4) return false;
+        for (int i = 0; i < 4; i++) {
+            if (packet[offset + i] != ip[i]) return false;
+        }
+        return true;
     }
 
     private void closeCurrent() {
