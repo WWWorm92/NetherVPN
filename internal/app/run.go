@@ -1,0 +1,80 @@
+package app
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"net/netip"
+	"time"
+
+	"github.com/WWWorm92/NetherVPN/internal/transport"
+	"github.com/WWWorm92/NetherVPN/internal/tun"
+	"github.com/WWWorm92/NetherVPN/internal/tunnel"
+	"github.com/flynn/noise"
+)
+
+type Config struct {
+	Interface string
+	Listen string
+	Peer string
+	PrivateKey string
+	PeerPublicKey string
+	AllowedSource string
+	MTU int
+}
+
+func (c Config) validate() (noise.DHKey,[]byte,netip.Addr,error) {
+	if !tun.ValidName(c.Interface) || c.MTU<40 || c.MTU>9000 {
+		return noise.DHKey{},nil,netip.Addr{},errors.New("app: invalid interface or MTU")
+	}
+	identity,err:=ParseIdentity(c.PrivateKey)
+	if err!=nil{return noise.DHKey{},nil,netip.Addr{},err}
+	pub,err:=ParsePublic(c.PeerPublicKey)
+	if err!=nil{return noise.DHKey{},nil,netip.Addr{},err}
+	addr,err:=netip.ParseAddr(c.AllowedSource)
+	if err!=nil || addr.IsUnspecified(){return noise.DHKey{},nil,netip.Addr{},errors.New("app: invalid allowed source")}
+	return identity,pub,addr,nil
+}
+
+// RunClient is a single-peer Linux prototype. It never changes system routes,
+// DNS, NAT, forwarding or interface addresses. The caller must configure these
+// in an isolated network namespace for testing.
+func RunClient(ctx context.Context,c Config) error {
+	identity,pub,source,err:=c.validate()
+	if err!=nil{return err}
+	peer,err:=net.ResolveUDPAddr("udp",c.Peer)
+	if err!=nil{return err}
+	conn,err:=net.ListenUDP("udp",nil)
+	if err!=nil{return err}
+	defer conn.Close()
+	handshakeCtx,cancel:=context.WithTimeout(ctx,5*time.Second)
+	secure,err:=transport.DialHandshake(handshakeCtx,conn,peer,identity,pub)
+	cancel()
+	if err!=nil{return fmt.Errorf("handshake: %w",err)}
+	device,err:=tun.Open(c.Interface)
+	if err!=nil{return err}
+	defer device.Close()
+	return runPumps(ctx,device,conn,peer,secure,c.MTU,source)
+}
+
+func RunServer(ctx context.Context,c Config) error {
+	identity,pub,source,err:=c.validate()
+	if err!=nil{return err}
+	listen,err:=net.ResolveUDPAddr("udp",c.Listen)
+	if err!=nil{return err}
+	conn,err:=net.ListenUDP("udp",listen)
+	if err!=nil{return err}
+	defer conn.Close()
+	if err:=conn.SetReadDeadline(time.Now().Add(15*time.Second));err!=nil{return err}
+	secure,peer,err:=transport.AcceptHandshake(conn,identity,func(candidate []byte)bool{
+		return bytes.Equal(candidate,pub)
+	})
+	if err!=nil{return fmt.Errorf("handshake: %w",err)}
+	if err:=conn.SetReadDeadline(time.Time{});err!=nil{return err}
+	device,err:=tun.Open(c.Interface)
+	if err!=nil{return err}
+	defer device.Close()
+	return runPumps(ctx,device,conn,peer,secure,c.MTU,source)
+}
