@@ -27,7 +27,7 @@ jobs:
           gradle-version: '8.9'
       - name: Build APK
         working-directory: android
-        run: gradle --no-daemon --stacktrace assembleDebug
+        run: gradle --no-daemon --stacktrace testDebugUnitTest assembleDebug
       - uses: actions/upload-artifact@v4
         if: success()
         with:
