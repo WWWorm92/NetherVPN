@@ -81,7 +81,6 @@ class NetherVpnService : VpnService() {
                     val device = Builder().setSession("NetherVPN").setMtu(profile.mtu)
                         .addAddress(profile.address, profile.prefix)
                         .addRoute(InetAddress.getByAddress(profile.serverTunnelAddress).hostAddress!!, 32)
-                        .addDnsServer(profile.dnsServer)
                         .setBlocking(true).establish() ?: error("Android отказал в создании VPN")
                     tun = device
                     try { pumps(device, udp, session, profile) }
