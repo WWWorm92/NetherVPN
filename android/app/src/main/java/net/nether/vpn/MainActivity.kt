@@ -73,6 +73,9 @@ class MainActivity : Activity() {
             startService(Intent(this, NetherVpnService::class.java)
                 .setAction(NetherVpnService.DISCONNECT))
         }
+        action("Настройки Always-on VPN и блокировки утечек") {
+            startActivity(Intent(android.provider.Settings.ACTION_VPN_SETTINGS))
+        }
         panel.addView(label("ПРОФИЛЬ (.conf)", 15f, colors[2]))
         profileStatus = label("Профиль не загружен", 14f, colors[4])
         panel.addView(profileStatus)
@@ -130,9 +133,14 @@ class MainActivity : Activity() {
     }
 
     private fun updateProfile() {
-        profileStatus.text = if (SecretStore.exists(this))
-            "Профиль сохранён (ключи защищены Keystore)"
-        else "Профиль не загружен"
+        profileStatus.text = try {
+            if (!SecretStore.exists(this)) "Профиль не загружен"
+            else {
+                val profile = VpnProfile.parse(SecretStore.load(this))
+                if (profile.fullTunnel) "Профиль сохранён · весь IPv4 через VPN"
+                else "Профиль сохранён · маршрут только к серверу"
+            }
+        } catch (_: Exception) { "Ошибка чтения сохранённого профиля" }
     }
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
