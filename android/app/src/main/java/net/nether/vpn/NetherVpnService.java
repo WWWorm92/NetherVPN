@@ -124,12 +124,20 @@ public final class NetherVpnService extends VpnService {
                         .setSession("NetherVPN")
                         .setMtu(profile.mtu)
                         .addAddress(profile.localIp, profile.localPrefix)
-                        .addRoute(profile.peerIp, profile.peerPrefix)
                         .setBlocking(true);
+                if (profile.fullTunnel) {
+                    // All IPv4/DNS goes to the VPN, including public DNS resolvers.
+                    builder.addRoute("0.0.0.0", 0).addDnsServer(profile.dns);
+                    // Fail closed for IPv6 until server IPv6 forwarding exists:
+                    // catch the default IPv6 route, then discard IPv6 from TUN.
+                    builder.addAddress("fd77:77::2", 128).addRoute("::", 0);
+                } else {
+                    builder.addRoute(profile.peerIp, profile.peerPrefix);
+                }
                 ParcelFileDescriptor device = builder.establish();
                 if (device == null) throw new IOException("Android отказал в создании VPN TUN");
                 synchronized (lifecycleLock) { tun = device; }
-                publish("Подключено · только " + profile.peerIp);
+                publish(profile.fullTunnel ? "Подключено · весь IPv4 через VPN" : "Подключено · только " + profile.peerIp);
                 delay = 1;
                 transfer(udp, secure, device, profile);
             } catch (Exception error) {
@@ -186,6 +194,9 @@ public final class NetherVpnService extends VpnService {
                     int count = input.read(data);
                     if (count < 0) return;
                     if (count == 0 || count > profile.mtu) continue;
+                    // IPv6 traffic is captured but deliberately not transmitted:
+                    // gateway currently supports only routed/NATed IPv4.
+                    if (!validOutbound(data, count, profile)) continue;
                     send(udp, secure.seal(data, count));
                     bytesUp.addAndGet(count);
                     updateStats();
@@ -232,20 +243,37 @@ public final class NetherVpnService extends VpnService {
         }
     }
 
+    /**
+     * Validate transport IP framing and destination before inserting a packet
+     * into Android TUN. A full-tunnel reply can originate from ANY public IP,
+     * not only the gateway IP.
+     */
     private static boolean validFromPeer(byte[] packet, VpnProfile profile) {
-        int version = packet.length == 0 ? 0 : (packet[0] >>> 4) & 15;
+        if (packet.length < 20 || (packet[0] >>> 4 & 15) != 4) return false;
+        int ihl = (packet[0] & 15) * 4;
+        int total = (packet[2] & 255) * 256 + (packet[3] & 255);
+        if (ihl < 20 || ihl > packet.length || total != packet.length || total < ihl) return false;
         try {
-            byte[] source;
-            if (version == 4 && packet.length >= 20) {
-                int ihl = (packet[0] & 15) * 4;
-                if (ihl < 20 || ihl > packet.length) return false;
-                source = Arrays.copyOfRange(packet, 12, 16);
-            } else if (version == 6 && packet.length >= 40) {
-                source = Arrays.copyOfRange(packet, 8, 24);
-            } else return false;
-            byte[] allowed = java.net.InetAddress.getByName(profile.peerIp).getAddress();
-            return Arrays.equals(source, allowed);
-        } catch (Exception e) { return false; }
+            byte[] expectedDestination = java.net.InetAddress.getByName(profile.localIp).getAddress();
+            byte[] destination = Arrays.copyOfRange(packet, 16, 20);
+            if (!Arrays.equals(expectedDestination, destination)) return false;
+            if (!profile.fullTunnel) {
+                byte[] allowed = java.net.InetAddress.getByName(profile.peerIp).getAddress();
+                return Arrays.equals(Arrays.copyOfRange(packet, 12, 16), allowed);
+            }
+            return true;
+        } catch (Exception ignored) { return false; }
+    }
+
+    private static boolean validOutbound(byte[] packet, int length, VpnProfile profile) {
+        if (length < 20 || (packet[0] >>> 4 & 15) != 4) return false;
+        int ihl = (packet[0] & 15) * 4;
+        int total = (packet[2] & 255) * 256 + (packet[3] & 255);
+        if (ihl < 20 || total != length || ihl > length) return false;
+        try {
+            byte[] assigned = java.net.InetAddress.getByName(profile.localIp).getAddress();
+            return Arrays.equals(Arrays.copyOfRange(packet, 12, 16), assigned);
+        } catch (Exception ignored) { return false; }
     }
 
     private void closeCurrent() {
