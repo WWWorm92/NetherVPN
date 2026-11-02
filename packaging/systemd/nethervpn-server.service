@@ -1,0 +1,19 @@
+[Unit]
+Description=NetherVPN experimental server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/nether-server -config /etc/nethervpn/server.conf
+Restart=on-failure
+RestartSec=3
+CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
