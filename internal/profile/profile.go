@@ -3,7 +3,6 @@
 package profile
 
 import (
- "bufio"
  "errors"
  "fmt"
  "net/netip"
