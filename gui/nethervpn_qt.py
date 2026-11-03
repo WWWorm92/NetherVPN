@@ -10,7 +10,7 @@ import time
 import shutil
 
 from PySide6.QtCore import Qt, QTimer, QThread, Signal, QRectF, QEasingCurve, QPropertyAnimation, Property
-from PySide6.QtGui import QColor, QPainter, QPen, QFont, QIcon
+from PySide6.QtGui import QColor, QPainter, QPen, QFont, QIcon, QRadialGradient
 from PySide6.QtWidgets import (
     QApplication, QWidget, QMainWindow, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QFrame, QStackedWidget, QListWidget, QLineEdit, QComboBox,
@@ -34,8 +34,8 @@ RED = "#fb7185"
 AMBER = "#f7c574"
 
 STYLE = """
-QWidget { background: #0c1727; color: #eff8ff; font-family: 'DejaVu Sans', sans-serif; font-size: 12px; }
-QWidget#sidebar { background: #0a1322; }
+QWidget { color: #eff8ff; font-family: 'DejaVu Sans', sans-serif; font-size: 12px; }
+QMainWindow, QWidget#appRoot, QStackedWidget, QWidget#page { background: #0c1727; }\nQWidget#sidebar { background: #0a1322; }\nQLabel { background: transparent; }
 QFrame#card { background: #14263b; border: 1px solid #213d55; border-radius: 22px; }
 QFrame#hero { background: #102638; border: 1px solid #1f4b60; border-radius: 26px; }
 QLabel#muted { color: #95b0c5; background: transparent; }
@@ -48,7 +48,7 @@ QPushButton:hover { background: #30536d; }
 QPushButton:pressed { background: #376478; }
 QPushButton#nav { text-align: left; background: transparent; border-radius: 15px; padding: 13px 18px; color: #b7cddd; }
 QPushButton#nav:hover { background: #16354b; }
-QPushButton#nav[active="true"] { background: #12434d; color: #44e5cb; }
+QPushButton#nav[active="true"] { background: #12434d; color: #44e5cb; }\nQPushButton#nav[active="true"]:hover { background: #185862; }
 QPushButton#primary { background: #44e5cb; color: #081a28; font-weight: 700; }
 QPushButton#primary:hover { background: #7af3df; }
 QPushButton#danger { background: #4c263e; border: 1px solid #fb7185; color: #ffd1dc; font-weight: 700; }
@@ -57,7 +57,7 @@ QLineEdit, QComboBox, QListWidget, QPlainTextEdit { background: #172d43; border:
 QComboBox::drop-down { border: 0px; width: 28px; }
 QCheckBox { spacing: 12px; background: transparent; }
 QScrollArea, QScrollArea > QWidget > QWidget { border: none; background: transparent; }
-QDialog { background: #0c1727; }
+QDialog { background: #0c1727; }\nQToolTip { background: #192f46; color: #eff8ff; border: 1px solid #31556a; padding: 7px; }
 """
 
 def label(text, size=None, muted=False, name=None):
@@ -89,8 +89,8 @@ class Ring(QWidget):
     clicked = Signal()
     def __init__(self):
         super().__init__()
-        self.setMinimumSize(216, 216)
-        self.setMaximumSize(240, 240)
+        self.setMinimumSize(218, 218)
+        self.setMaximumSize(244, 244)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._progress = 0.0
@@ -118,28 +118,42 @@ class Ring(QWidget):
     def paintEvent(self, _event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        span = min(self.width(), self.height())
-        d = span - 24
-        rect = QRectF((self.width()-d)/2, (self.height()-d)/2, d, d)
-        p.setBrush(QColor("#102d40"))
-        p.setPen(QPen(QColor("#2a485e"), 5))
-        p.drawEllipse(rect)
-        p.setPen(QPen(QColor("#41647b"), 1))
+        side = min(self.width(), self.height())
+        diameter = side - 35
+        ring = QRectF((self.width()-diameter)/2, (self.height()-diameter)/2,
+                      diameter, diameter)
+        glow = QRadialGradient(ring.center(), diameter * .64)
+        glow.setColorAt(0, QColor(self.color.red(), self.color.green(),
+                                  self.color.blue(), 42))
+        glow.setColorAt(.75, QColor(self.color.red(), self.color.green(),
+                                    self.color.blue(), 18))
+        glow.setColorAt(1, QColor(self.color.red(), self.color.green(),
+                                  self.color.blue(), 0))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(glow)
+        p.drawEllipse(ring.adjusted(-10, -10, 10, 10))
+        p.setBrush(QColor("#0c2736"))
+        p.setPen(QPen(QColor("#2e5265"), 5))
+        p.drawEllipse(ring)
+        p.setPen(QPen(QColor("#29465b"), 1))
         p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawEllipse(rect.adjusted(11, 11, -11, -11))
+        p.drawEllipse(ring.adjusted(11, 11, -11, -11))
+        p.setPen(QPen(self.color, 6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawArc(ring, 75*16, -int((34 + 320*self._progress)*16))
+        # Custom vector power glyph is independent of installed system fonts.
+        center = ring.center()
         p.setPen(QPen(self.color, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        p.drawArc(rect, 70*16, -int((35 + 310*self._progress)*16))
+        glyph = QRectF(center.x()-19, center.y()-37, 38, 38)
+        p.drawArc(glyph, 130*16, 280*16)
+        p.drawLine( center.x(), center.y()-44, center.x(), center.y()-22 )
         p.setPen(QColor(TEXT))
-        f = QFont("DejaVu Sans", 17)
-        f.setBold(True)
-        p.setFont(f)
-        p.drawText(rect.adjusted(0, -14, 0, 0), Qt.AlignmentFlag.AlignCenter, self.title)
-        f.setPointSize(9)
-        f.setBold(False)
-        p.setFont(f)
-        p.setPen(QColor(MUTED))
-        p.drawText(rect.adjusted(0, 45, 0, 0), Qt.AlignmentFlag.AlignCenter, self.subtitle)
-
+        font = QFont("DejaVu Sans", 12)
+        font.setBold(True)
+        p.setFont(font)
+        caption = ("Включить" if self.title == "Подключить" else
+                   "Выключить" if self.title == "Отключить" else "Подключение")
+        p.drawText(QRectF(center.x()-90, center.y()+9, 180, 32),
+                   Qt.AlignmentFlag.AlignCenter, caption)
     def mouseReleaseEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
@@ -169,7 +183,7 @@ class Window(QMainWindow):
         BASE.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(BASE, 0o700)
         self.setWindowTitle("NetherVPN")
-        self.setWindowIcon(QIcon(str(ROOT/"assets/nethervpn.svg")))
+        icon_png = ROOT / "assets" / "nethervpn.png"\n        self.setWindowIcon(QIcon(str(icon_png if icon_png.is_file() else ROOT/"assets/nethervpn.svg"))))
         self.resize(1050, 750)
         self.setMinimumSize(850, 650)
         self.busy = False
@@ -204,7 +218,7 @@ class Window(QMainWindow):
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(19, 27, 19, 22)
         side.setSpacing(7)
-        side.addWidget(label("◈  NetherVPN", name="brand"))
+        logo = QHBoxLayout()\n        logo.setSpacing(12)\n        self.logo_mark = QLabel()\n        self.logo_mark.setFixedSize(39, 39)\n        self.logo_mark.setPixmap(self.windowIcon().pixmap(39, 39))\n        logo.addWidget(self.logo_mark)\n        logo.addWidget(label("NetherVPN", name="brand"))\n        logo.addStretch()\n        side.addLayout(logo)
         side.addSpacing(35)
         self.nav_buttons = []
         for title, page in (("⌂   Подключение", 0),
@@ -216,7 +230,7 @@ class Window(QMainWindow):
             btn = QPushButton(title)
             btn.setObjectName("nav")
             btn.setProperty("active", page == 0)
-            btn.clicked.connect(lambda _checked=False, page=page: self.go(page))
+            btn.clicked.connect(lambda _checked=False, page=page, button=btn: self.go(page, button))
             side.addWidget(btn)
             self.nav_buttons.append((btn, page))
         side.addStretch()
@@ -578,7 +592,7 @@ class Window(QMainWindow):
             title, subtitle, color = "Подключить", "Нажмите для включения", MUTED
         self.ring.state(title, subtitle, color)
         self.status.setText("●  " + ("VPN-интерфейс активен" if iface else "Служба запущена" if running else "Не подключено"))
-        self.hint.setText("Трафик может проходить через VPN" if iface else "Проверьте подключение" if running else "Выберите сервер и подключитесь")
+        self.hint.setText("Интерфейс VPN активен" if iface else "Проверьте подключение" if running else "Выберите сервер и подключитесь")
         self.side_status.setText("●  Служба активна" if running else "●  Служба остановлена")
         if iface:
             try:
