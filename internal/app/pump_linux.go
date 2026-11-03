@@ -20,11 +20,14 @@ var keepaliveRequest=[]byte("\x00NVPN-PING-v1")
 var keepaliveReply=[]byte("\x00NVPN-PONG-v1")
 
 // runPumps actively checks authenticated peer liveness, not TUN presence.
-func runPumps(parent context.Context, device *tun.Device, conn *net.UDPConn, peer *net.UDPAddr, secure *session.Session, mtu int, allowed netip.Addr) error {
+func runPumps(parent context.Context, device *tun.Device, conn *net.UDPConn, peer *net.UDPAddr, secure *session.Session, mtu int, allowed netip.Addr,local netip.Addr,fullTunnel bool) error {
  ctx,cancel:=context.WithCancel(parent)
  defer cancel()
  errorsCh:=make(chan error,3)
- go func(){errorsCh<-tunnel.PumpToUDP(ctx,device,conn,peer,secure,mtu,func([]byte)error{return nil})}()
+ go func(){errorsCh<-tunnel.PumpToUDP(ctx,device,conn,peer,secure,mtu,func(packet []byte)error{
+  if fullTunnel && (len(packet)==0 || packet[0]>>4!=4){return tunnel.ErrInvalidPacket}
+  return tunnel.VerifySource(packet,local)
+ })}()
  lastReply:=time.Now()
  replies:=make(chan time.Time,8)
  go func(){
@@ -57,7 +60,14 @@ func runPumps(parent context.Context, device *tun.Device, conn *net.UDPConn, pee
     select{case replies<-time.Now():default:}
     continue
    }
-   if len(plain)>mtu||!tunnel.IsIP(plain)||tunnel.VerifySource(plain,allowed)!=nil{continue}
+   if len(plain)>mtu||!tunnel.IsIP(plain){continue}
+   if fullTunnel {
+    // Internet replies may have any source, but MUST target this client's
+    // assigned tunnel IPv4. The outer packet is authenticated by Noise.
+    if plain[0]>>4!=4{continue}
+    dst,err:=tunnel.DestinationIP(plain)
+    if err!=nil||dst!=local{continue}
+   }else if tunnel.VerifySource(plain,allowed)!=nil{continue}
    written,err:=device.Write(plain)
    if err!=nil{errorsCh<-err;return}
    if written!=len(plain){errorsCh<-io.ErrShortWrite;return}
