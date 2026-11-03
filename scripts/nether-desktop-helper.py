@@ -142,6 +142,18 @@ def connect(name, uid):
     finally:
         os.close(source)
     validate(profile, settings)
+    if (ROOT / "server.conf").is_file():
+        result = subprocess.run(
+            ["/usr/bin/systemctl", "is-active", "--quiet", "nethervpn-server.service"],
+            capture_output=True, check=False)
+        if result.returncode == 0:
+            gateway = configparser.ConfigParser(interpolation=None)
+            client = configparser.ConfigParser(interpolation=None)
+            gateway.read(ROOT / "server.conf")
+            client.read_string(profile.decode("utf-8"))
+            if gateway.get("Interface", "Name", fallback="nvpn0") == client.get(
+                    "Interface", "Name", fallback="nvpn0"):
+                fail("Сервер уже использует этот TUN. Нужен другой интерфейс или хост.")
     root_directory()
     old = {}
     for filename in ("client.conf", "client-settings.conf"):
