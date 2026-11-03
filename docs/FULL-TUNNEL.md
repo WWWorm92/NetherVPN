@@ -64,11 +64,13 @@ Do **not** casually disable `net.ipv4.ip_forward` if other routing services need
 
 ```bash
 sudo nether-admin
-sudo nether-admin list
-sudo systemctl restart nethervpn-server
 ```
 
-Choose Create client, enter a name and public IPv4 endpoint. The generated file works on both Android and Linux; choose Full/Split and DNS in the client app, not in this wizard.\n\nThe generated secret-bearing profile is at
+Choose «Создать клиента» and enter the name and public IPv4 endpoint. The
+generated file works on both Android and Linux. Select Full/Split and DNS
+inside each app, not in the server wizard.
+
+The generated secret-bearing profile is at
 `/etc/nethervpn/clients/phone.conf`, mode 0600, and can be transferred via
 a secure channel. The public authorization record is stored separately in
 `/etc/nethervpn/peers/phone.conf`.
@@ -76,12 +78,9 @@ a secure channel. The public authorization record is stored separately in
 For a second phone, create a different `-name`. The generator allocates the
 next free VPN IPv4 and does **not** replace the existing Linux peer.
 
-To revoke a device:
-
-```bash
-sudo nether-admin revoke -name phone
-sudo systemctl restart nethervpn-server
-```
+To revoke a device, use the same management menu (or the noninteractive
+`sudo nether-admin revoke -name phone`). Activation/revocation requires a
+server restart, which the menu offers with explicit confirmation.
 
 For transfer to the logged-in administrator's home (do not paste secrets into chat):
 
@@ -106,12 +105,13 @@ MTU = 1280
 
 [Peer]
 PublicKey = <pinned-server-public-key>
-Endpoint = 45.151.69.184:51830
+Endpoint = 77.221.132.76:51830
 AllowedIPs = 10.77.0.1
 ```
 
-Select Full IPv4 mode and DNS (such as 1.1.1.1) in the Android app. Android then routes 0.0.0.0/0 to TUN and uses the locally selected resolver. DNS therefore travels through the encrypted IPv4 tunnel. IPv6
-0::/0 is captured and intentionally dropped (no fallback through cellular/Wi-Fi).
+Select Full IPv4 and a DNS resolver (such as 1.1.1.1) **in the Android app**.
+Android routes 0.0.0.0/0 to the TUN and uses the chosen DNS through the VPN.
+IPv6 ::/0 is captured and intentionally dropped in full-tunnel mode.
 The UDP socket to the public server is excluded using `VpnService.protect`.
 
 For a **device-level fail-closed policy on disconnect**, enable Android Settings
