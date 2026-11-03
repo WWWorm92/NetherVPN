@@ -480,12 +480,20 @@ class Window(QMainWindow):
         layout.addStretch()
         self.pages.addWidget(page)
 
-    def go(self, index):
+    def go(self, index, selected_button=None):
+        """Select a page and highlight exactly one navigation entry."""
+        if not 0 <= index < self.pages.count():
+            return
         self.pages.setCurrentIndex(index)
-        for btn, page in self.nav_buttons:
-            btn.setProperty("active", page == index)
+        if selected_button is None:
+            selected_button = next(
+                (btn for btn, page in self.nav_buttons if page == index), None)
+        for btn, _page in self.nav_buttons:
+            selected = btn is selected_button
+            btn.setProperty("active", selected)
             btn.style().unpolish(btn)
             btn.style().polish(btn)
+            btn.update()
         if index == 2:
             self.diagnose()
 
