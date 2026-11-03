@@ -20,6 +20,14 @@ privacy-critical traffic or production systems.**
   boot persistence. The server's default route remains unchanged.
 - Android debug APK built by GitHub Actions and published as a pre-release.
 
+**0.5 Alpha UI update:** Android and Linux share a navy/mint connection dashboard
+with clear connection state, one-click actions, local Full/Split controls,
+traffic statistics, profile management and diagnostics. Android now has
+separately tested IPv4 input filtering: spoofed/malformed/IPv6 packets are
+discarded without restarting the authenticated tunnel, matching Linux's
+long-running pump behavior. Android's OS settings implement Always-on and
+lockdown; do not assume the app can enforce them on its own.
+
 **Get started:** [Server management](docs/ADMIN.md) · [Full-tunnel setup](docs/FULL-TUNNEL.md) ·
 [Android client](android/README.md) ·
 [Releases](https://github.com/WWWorm92/NetherVPN/releases) ·
