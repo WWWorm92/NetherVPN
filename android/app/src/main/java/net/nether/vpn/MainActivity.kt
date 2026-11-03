@@ -29,7 +29,7 @@ class MainActivity : Activity() {
     private val mint = Color.rgb(118, 217, 199)
     private val white = Color.rgb(237, 244, 250)
     private val muted = Color.rgb(158, 176, 196)
-    private val amber = Color.rgb(118, 217, 199)
+    private val amber = Color.rgb(244, 197, 127)
     private val red = Color.rgb(255, 135, 156)
     private val handler = Handler(Looper.getMainLooper())
     private val vpnRequest = 21
@@ -149,6 +149,7 @@ class MainActivity : Activity() {
             setTypeface(Typeface.DEFAULT, Typeface.BOLD)
             setTextColor(navy)
             background = connectionSurface(mint)
+            backgroundTintList = null
             elevation = dp(2).toFloat()
             minHeight = dp(62)
             minimumHeight = dp(62)
@@ -236,6 +237,7 @@ class MainActivity : Activity() {
             textSize = 13f
             setTextColor(white)
             background = softCard(raised, 22)
+            backgroundTintList = null
             minHeight = dp(52)
             minimumHeight = dp(52)
             setOnClickListener { action() }
@@ -430,7 +432,7 @@ class MainActivity : Activity() {
             "error" -> "Сбросить VPN"
             else -> "Подключить"
         }
-        connectButton.setTextColor(navy)
+        connectButton.setTextColor(if (connected || pending || phase == "error") navy else white)
         if (renderedPhase != phase) {
             connectButton.background = connectionSurface(
                 if (connected) mint else if (pending) amber else if (phase == "error") red else raised)
