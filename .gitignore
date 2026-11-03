@@ -19,3 +19,9 @@
 .idea/
 .vscode/
 .DS_Store
+
+# Local Python/Qt development
+.venv/
+.venv-ci/
+__pycache__/
+*.pyc
