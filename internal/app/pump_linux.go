@@ -6,8 +6,10 @@ import (
  "context"
  "errors"
  "io"
+ "log"
  "net"
  "net/netip"
+ "sync/atomic"
  "time"
 
  "github.com/WWWorm92/NetherVPN/internal/session"
@@ -16,6 +18,7 @@ import (
 )
 
 var errPeerSilent=errors.New("client: peer keepalive timeout")
+var errIPv6Blocked=errors.New("IPv6 blocked in IPv4-only Full Tunnel")
 var keepaliveRequest=[]byte("\x00NVPN-PING-v1")
 var keepaliveReply=[]byte("\x00NVPN-PONG-v1")
 
@@ -24,10 +27,22 @@ func runPumps(parent context.Context, device *tun.Device, conn *net.UDPConn, pee
  ctx,cancel:=context.WithCancel(parent)
  defer cancel()
  errorsCh:=make(chan error,3)
- go func(){errorsCh<-tunnel.PumpToUDP(ctx,device,conn,peer,secure,mtu,func(packet []byte)error{
-  if fullTunnel && (len(packet)==0 || packet[0]>>4!=4){return tunnel.ErrInvalidPacket}
-  return tunnel.VerifySource(packet,local)
- })}()
+ // Rejected outbound packets must never tear down an authenticated VPN.
+ // TUN output is not guaranteed to be IPv4 (or even well-formed), especially
+ // when other VPNs, network managers and IPv6 traffic are present.
+ var dropped atomic.Uint64
+ go func(){
+  errorsCh<-tunnel.PumpToUDPFiltered(ctx,device,conn,peer,secure,mtu,func(packet []byte)error{
+   if fullTunnel && (len(packet)==0 || packet[0]>>4!=4){return errIPv6Blocked}
+   return tunnel.VerifySource(packet,local)
+  },func(reason error,n int){
+   count:=dropped.Add(1)
+   // Bounded diagnostic output, never log payloads, credentials or IP data.
+   if count<=3 || (count&(count-1))==0 {
+    log.Printf("client: dropped outbound TUN packet: %v (%d bytes, %d dropped); keeping session alive",reason,n,count)
+   }
+  })
+ }()
  lastReply:=time.Now()
  replies:=make(chan time.Time,8)
  go func(){
