@@ -51,6 +51,8 @@ class App(tk.Tk):
         self.since = None
         self.authenticated = False
         self.previous_counters = None
+        self.last_service_poll = 0.0
+        self.service_running = False
         self.items = []
         self.selected_name = None
         self.state = tk.StringVar(value="Не подключено")
@@ -310,6 +312,7 @@ class App(tk.Tk):
                                + " · IPv6 блокируется")
         else:
             self.mode_text.set("Только VPN-сервер · интернет без изменений")
+        self.refresh_mode_buttons()
 
     def on_select(self, _event=None):
         path = self.selected()
@@ -553,14 +556,59 @@ class App(tk.Tk):
         self.rx.set(f"{rx / 1024:.1f} КиБ")
         return True
 
+    def service_is_running(self):
+        """Unprivileged systemd read; checked at most once every 3 seconds."""
+        now = time.monotonic()
+        if now - self.last_service_poll >= 3:
+            self.last_service_poll = now
+            try:
+                result = subprocess.run(
+                    ["systemctl", "is-active", "--quiet", "nethervpn-client.service"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    timeout=2, check=False)
+                self.service_running = result.returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                self.service_running = False
+        return self.service_running
+
     def tick(self):
-        if self.active:
+        running = self.service_is_running()
+        active = self.active
+        if running and active:
             has_tun = self.stats()
-            self.state.set("Туннель запущен" if has_tun else "Ожидание интерфейса…")
+            if has_tun:
+                self.state.set("Туннель подключён")
+                self.status_tag.set("●  СОЕДИНЕНИЕ АКТИВНО")
+                self.status_hint.set("TUN-интерфейс работает · шифрование Noise IK")
+                self.status_badge.configure(fg=ACCENT)
+            else:
+                self.state.set("Подключение…")
+                self.status_tag.set("●  ОЖИДАНИЕ ТУННЕЛЯ")
+                self.status_hint.set("Аутентификация и создание интерфейса")
+                self.status_badge.configure(fg=AMBER)
             if self.since:
                 seconds = int(time.monotonic() - self.since)
-                self.timing.set(f"{seconds // 60:02d}:{seconds % 60:02d}")
-        self.after(750, self.tick)
+                self.timing.set(f"{seconds // 3600:02d}:{(seconds // 60) % 60:02d}:{seconds % 60:02d}")
+        elif running:
+            # A GUI restart must not falsely display "disconnected" while
+            # the systemd client continues independently in the background.
+            self.state.set("VPN работает в фоне")
+            self.status_tag.set("●  СЛУЖБА ЗАПУЩЕНА")
+            self.status_hint.set("Для диагностики нажмите «Диагностика»")
+            self.status_badge.configure(fg=AMBER)
+        elif not self.busy:
+            if self.active is not None:
+                self.active = None
+                self.previous_counters = None
+                self.since = None
+            self.state.set("VPN выключен")
+            self.status_tag.set("●  НЕ ПОДКЛЮЧЕНО")
+            self.status_hint.set("Выберите профиль и подключитесь")
+            self.status_badge.configure(fg=MUTED)
+            self.timing.set("00:00:00")
+        self.connect_btn.configure(state="disabled" if self.busy else "normal")
+        self.disconnect_btn.configure(state="disabled" if self.busy or not running else "normal")
+        self.after(1000, self.tick)
 
     def close_app(self):
         if self.busy:
