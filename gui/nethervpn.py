@@ -179,8 +179,8 @@ class App(tk.Tk):
         win = tk.Toplevel(self)
         self.settings_window = win
         win.title("NetherVPN · Настройки")
-        win.geometry("390x490")
-        win.minsize(340, 430)
+        win.geometry("390x540")
+        win.minsize(340, 500)
         win.configure(bg=BG)
         win.transient(self)
         container = tk.Frame(win, bg=BG, padx=23, pady=20)
@@ -631,30 +631,53 @@ class App(tk.Tk):
                 self.service_running = False
         return self.service_running
 
+    def update_power(self, running, ready=False):
+        if self.busy:
+            color = AMBER
+            title = "Подключение…"
+            subtitle = "Выполняется операция"
+        elif ready:
+            color = ACCENT
+            title = "Отключить"
+            subtitle = "VPN активен"
+        elif running:
+            color = AMBER
+            title = "Отключить"
+            subtitle = "Ожидание туннеля"
+        else:
+            color = "#536276"
+            title = "Подключить"
+            subtitle = "Нажмите для включения"
+        self.connect_btn.itemconfigure(self.outer_ring, outline=color)
+        self.connect_btn.itemconfigure(self.power_text, text=title, fill=TEXT)
+        self.connect_btn.itemconfigure(self.power_subtext, text=subtitle, fill=MUTED)
+        self.connect_btn.configure(state="disabled" if self.busy else "normal")
+
     def tick(self):
         running = self.service_is_running()
         active = self.active
+        ready = False
         if running and active:
-            has_tun = self.stats()
-            if has_tun:
+            ready = self.stats()
+            if ready:
                 self.state.set("Туннель подключён")
                 self.status_tag.set("●  СОЕДИНЕНИЕ АКТИВНО")
-                self.status_hint.set("TUN-интерфейс работает · шифрование Noise IK")
+                self.status_hint.set("VPN-интерфейс работает")
                 self.status_badge.configure(fg=ACCENT)
             else:
                 self.state.set("Подключение…")
                 self.status_tag.set("●  ОЖИДАНИЕ ТУННЕЛЯ")
-                self.status_hint.set("Аутентификация и создание интерфейса")
+                self.status_hint.set("Подключаемся к серверу")
                 self.status_badge.configure(fg=AMBER)
             if self.since:
                 seconds = int(time.monotonic() - self.since)
-                self.timing.set(f"{seconds // 3600:02d}:{(seconds // 60) % 60:02d}:{seconds % 60:02d}")
+                self.timing.set(
+                    f"{seconds // 3600:02d}:{(seconds // 60) % 60:02d}:{seconds % 60:02d}")
         elif running:
-            # A GUI restart must not falsely display "disconnected" while
-            # the systemd client continues independently in the background.
+            # The VPN may run as a boot service before opening this GUI.
             self.state.set("VPN работает в фоне")
-            self.status_tag.set("●  СЛУЖБА ЗАПУЩЕНА")
-            self.status_hint.set("Для диагностики нажмите «Диагностика»")
+            self.status_tag.set("●  VPN-СЛУЖБА ЗАПУЩЕНА")
+            self.status_hint.set("Статус туннеля смотрите в диагностике")
             self.status_badge.configure(fg=AMBER)
         elif not self.busy:
             if self.active is not None:
@@ -663,18 +686,17 @@ class App(tk.Tk):
                 self.since = None
             self.state.set("VPN выключен")
             self.status_tag.set("●  НЕ ПОДКЛЮЧЕНО")
-            self.status_hint.set("Выберите профиль и подключитесь")
+            self.status_hint.set("Можно выбрать другой сервер")
             self.status_badge.configure(fg=MUTED)
             self.timing.set("00:00:00")
-        self.connect_btn.configure(state="disabled" if self.busy else "normal")
-        self.disconnect_btn.configure(state="disabled" if self.busy or not running else "normal")
+        self.update_power(running, ready)
         self.after(1000, self.tick)
 
     def close_app(self):
         if self.busy:
             messagebox.showinfo("NetherVPN", "Дождитесь окончания операции")
             return
-        if self.active and not messagebox.askyesno("NetherVPN", "Закрыть окно? VPN продолжит работать как служба."):
+        if self.service_is_running() and not messagebox.askyesno("NetherVPN", "Закрыть окно? VPN продолжит работать как служба."):
             return
         self.destroy()
 
