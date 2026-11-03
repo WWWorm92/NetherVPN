@@ -20,13 +20,16 @@ privacy-critical traffic or production systems.**
   boot persistence. The server's default route remains unchanged.
 - Android debug APK built by GitHub Actions and published as a pre-release.
 
-**0.5 Alpha UI update:** Android and Linux share a navy/mint connection dashboard
-with clear connection state, one-click actions, local Full/Split controls,
-traffic statistics, profile management and diagnostics. Android now has
-separately tested IPv4 input filtering: spoofed/malformed/IPv6 packets are
-discarded without restarting the authenticated tunnel, matching Linux's
-long-running pump behavior. Android's OS settings implement Always-on and
-lockdown; do not assume the app can enforce them on its own.
+**0.6 Alpha compact UI:** Android and Linux now use matching compact graphite-and-amber
+clients with a large circular connect/disconnect control, truthful connection status,
+one selectable server card and a minimal bottom navigation. Full/Split, DNS,
+autoconnect, profile management and diagnostics are accessible in separate
+settings/sheets instead of cluttering the home screen. Core VPN routing and
+universal client configuration remain compatible with 0.5.
+
+Android and Linux both discard malformed/spoofed/IPv6 TUN traffic instead
+of restarting the encrypted session; Android's Always-on/lockdown remains an
+OS-controlled setting. Experimental and not audited.
 
 **Get started:** [Server management](docs/ADMIN.md) · [Full-tunnel setup](docs/FULL-TUNNEL.md) ·
 [Android client](android/README.md) ·
