@@ -22,10 +22,57 @@ sudo install -m 0755 scripts/nether-desktop-helper.py /usr/local/libexec/nether-
 sudo install -d -o root -g root -m 0700 /etc/nethervpn
 sudo install -o root -g root -m 0644 packaging/systemd/nethervpn-client.service /etc/systemd/system/nethervpn-client.service
 sudo systemctl daemon-reload
-mkdir -p "$HOME/.local/share/applications"
-printf '[Desktop Entry]\nType=Application\nName=NetherVPN\nComment=Experimental Linux VPN client\nExec=%s/.venv/bin/python %s/gui/nethervpn_qt.py\nIcon=%s/assets/nethervpn.svg\nTerminal=false\nCategories=Network;\n' "$ROOT" "$ROOT" "$ROOT" > "$HOME/.local/share/applications/nethervpn.desktop"
-chmod 0644 "$HOME/.local/share/applications/nethervpn.desktop"
-echo 'NetherVPN Qt desktop installed in application menu.'
+# Materialize a standard freedesktop icon from the bundled SVG. QtSvgRenderer
+# is deliberately used instead of relying on optional SVG image plugins.
+ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
+mkdir -p "$ICON_DIR" "$HOME/.local/share/applications"
+"$ROOT/.venv/bin/python" scripts/render-desktop-icon.py "$ICON_DIR/nethervpn.png"
+
+DESKTOP_FILE="$HOME/.local/share/applications/nethervpn.desktop"
+cat > "$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=NetherVPN
+GenericName=VPN Client
+Comment=NetherVPN Qt desktop client
+Exec="$ROOT/.venv/bin/python" "$ROOT/gui/nethervpn_qt.py"
+TryExec=$ROOT/.venv/bin/python
+Icon=nethervpn
+Terminal=false
+StartupNotify=true
+StartupWMClass=NetherVPN
+Categories=Network;Security;
+Keywords=VPN;NetherVPN;Network;
+EOF
+chmod 0644 "$DESKTOP_FILE"
+
+# An older manually created launcher may have a different desktop-file ID.
+# Update only *user-owned* NetherVPN entries explicitly pointing to the old
+# Tkinter script. This retains application-menu pins/favorites referencing IDs.
+for directory in "$HOME/.local/share/applications" "$HOME/Desktop" "$HOME/Рабочий стол"; do
+  [[ -d "$directory" ]] || continue
+  while IFS= read -r -d '' launcher; do
+    [[ "$launcher" == "$DESKTOP_FILE" ]] && continue
+    [[ -f "$launcher" && ! -L "$launcher" ]] || continue
+    if grep -Eq '^Exec=.*gui/nethervpn\\.py([[:space:]]|$)' "$launcher" &&
+       grep -Eq '^(Name|Comment)=.*(NetherVPN|Nether VPN)' "$launcher"; then
+      cp "$DESKTOP_FILE" "$launcher"
+      chmod 0644 "$launcher"
+      echo "Updated legacy NetherVPN launcher: $launcher"
+    fi
+  done < <(find "$directory" -maxdepth 1 -type f -name '*.desktop' -print0)
+done
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database "$HOME/.local/share/applications" || true
+fi
+if command -v xdg-desktop-menu >/dev/null 2>&1; then
+  xdg-desktop-menu forceupdate >/dev/null 2>&1 || true
+fi
+echo "Installed NetherVPN Qt launcher: $DESKTOP_FILE"
+echo "Qt executable: $ROOT/.venv/bin/python $ROOT/gui/nethervpn_qt.py"
+echo "Icon: $ICON_DIR/nethervpn.png"
 if ! command -v resolvectl >/dev/null; then
   echo 'WARNING: Full Tunnel needs resolvectl (systemd-resolved).' >&2
   echo 'Install and activate systemd-resolved before connecting in Full mode.' >&2
