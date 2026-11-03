@@ -39,8 +39,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("NetherVPN")
-        self.geometry("420x690")
-        self.minsize(380, 620)
+        self.geometry("410x660")
+        self.minsize(360, 590)
         self.configure(bg=BG)
         # App switcher/titlebar icon matches the Linux SVG and Android launcher.
         self._app_icon = create_icon(self)
@@ -126,40 +126,40 @@ class App(tk.Tk):
     def _ui(self):
         """Original NetherVPN layout: soft connection capsule and quiet controls."""
         top = tk.Frame(self, bg=BG)
-        top.pack(fill="x", padx=24, pady=(24, 4))
+        top.pack(fill="x", padx=26, pady=(24, 5))
         self._header_icon = self._app_icon.subsample(2, 2)
         tk.Label(top, image=self._header_icon, bg=BG, bd=0).pack(
             side="left", padx=(0, 11))
         brand = tk.Frame(top, bg=BG)
         brand.pack(side="left")
         self.label(brand, "NetherVPN", 18, TEXT, "bold").pack(anchor="w")
-        self.label(brand, "Приватная сеть · Ваш сервер", 9, MUTED).pack(anchor="w")
+        self.label(brand, "Безопасное подключение", 9, MUTED).pack(anchor="w")
         self.label(top, "LINUX", 9, ACCENT, "bold").pack(
             side="right", pady=(8, 0))
 
         center = tk.Frame(self, bg=BG)
         center.pack(fill="both", expand=True, padx=17)
         self.label(center, "ЗАЩИТА СОЕДИНЕНИЯ", 9, MUTED, "bold").pack(
-            anchor="w", padx=12, pady=(23, 0))
+            anchor="w", padx=12, pady=(16, 0))
 
         # Classic central power control restored; quieter two-layer geometry.
-        self.connect_btn = tk.Canvas(center, width=244, height=244, bg=BG,
+        self.connect_btn = tk.Canvas(center, width=188, height=188, bg=BG,
                                      bd=0, highlightthickness=0,
                                      cursor="hand2", takefocus=1)
-        self.connect_btn.pack(expand=True, pady=(4, 2))
+        self.connect_btn.pack(expand=True, pady=(6, 1))
         self.outer_ring = self.connect_btn.create_oval(
-            15, 15, 229, 229, outline=RAISED, width=9)
+            13, 13, 175, 175, outline=RAISED, width=7)
         self.inner_ring = self.connect_btn.create_oval(
-            27, 27, 217, 217, outline="#38516a", width=1)
+            22, 22, 166, 166, outline="#38516a", width=1)
         self.power_text = self.connect_btn.create_text(
-            122, 114, text="Подключить", fill=TEXT,
-            font=("DejaVu Sans", 16, "bold"))
+            94, 89, text="Подключить", fill=TEXT,
+            font=("DejaVu Sans", 13, "bold"))
         self.power_subtext = self.connect_btn.create_text(
-            122, 145, text="Защищённый канал", fill=MUTED,
+            94, 115, text="Защищённый канал", fill=MUTED,
             font=("DejaVu Sans", 9))
         self._accent_line = self.connect_btn.create_arc(
-            15, 15, 229, 229, start=66, extent=48,
-            style="arc", outline=ACCENT, width=9)
+            13, 13, 175, 175, start=66, extent=48,
+            style="arc", outline=ACCENT, width=7)
         self.connect_btn.bind("<Button-1>", lambda _e: self.toggle_connection())
         self.connect_btn.bind("<Return>", lambda _e: self.toggle_connection())
         self.connect_btn.bind("<space>", lambda _e: self.toggle_connection())
@@ -167,20 +167,24 @@ class App(tk.Tk):
         self.status_badge = tk.Label(
             center, textvariable=self.status_tag, bg=BG, fg=MUTED,
             font=("DejaVu Sans", 10, "bold"))
-        self.status_badge.pack(pady=(2, 4))
+        self.status_badge.pack(pady=(4, 5))
         tk.Label(center, textvariable=self.status_hint, bg=BG, fg=MUTED,
                  font=("DejaVu Sans", 9)).pack(pady=(0, 10))
 
-        # A useful, always-visible summary instead of an empty decorative area.
-        metrics = tk.Frame(self, bg=BG)
-        metrics.pack(fill="x", padx=24, pady=(5, 8))
-        for title, value in (("ПОЛУЧЕНО", self.rx), ("ОТПРАВЛЕНО", self.tx),
-                             ("ВРЕМЯ", self.timing)):
-            block = tk.Frame(metrics, bg=PANEL, padx=12, pady=10)
-            block.pack(side="left", fill="x", expand=True, padx=3)
+        metrics = tk.Frame(self, bg=PANEL, padx=13, pady=15)
+        metrics.pack(fill="x", padx=25, pady=(13, 9))
+        for index, (title, value) in enumerate((
+            ("↓  ПОЛУЧЕНО", self.rx), ("↑  ОТПРАВЛЕНО", self.tx),
+            ("◷  ВРЕМЯ", self.timing))):
+            if index:
+                tk.Frame(metrics, bg="#2c4359", width=1).pack(
+                    side="left", fill="y", padx=6)
+            block = tk.Frame(metrics, bg=PANEL)
+            block.pack(side="left", fill="x", expand=True, padx=4)
             self.label(block, title, 8, MUTED, "bold").pack(anchor="w")
             tk.Label(block, textvariable=value, bg=PANEL, fg=TEXT,
-                     font=("DejaVu Sans", 11, "bold")).pack(anchor="w", pady=(5, 0))
+                     font=("DejaVu Sans", 11, "bold")).pack(
+                         anchor="w", pady=(7, 0))
 
         lower = tk.Frame(self, bg=BG)
         lower.pack(fill="x", padx=25, pady=(0, 12))
@@ -190,9 +194,9 @@ class App(tk.Tk):
             activebackground=BG, activeforeground=TEXT,
             font=("DejaVu Sans", 10), bd=0, relief="flat",
             cursor="hand2", pady=10, command=self.open_settings)
-        self.mode_row.pack(fill="x", pady=(0, 5))
+        self.mode_row.pack(fill="x", pady=(0, 4))
 
-        server = tk.Canvas(lower, height=99, bg=BG, bd=0,
+        server = tk.Canvas(lower, height=92, bg=BG, bd=0,
                            highlightthickness=0, cursor="hand2")
         server.pack(fill="x")
         server.bind("<Configure>", self._resize_server_card)
@@ -203,24 +207,23 @@ class App(tk.Tk):
         self._server_card = server
         self.profile_btn = server  # Profile-card action for accessibility and UI tests.
         self._server_bg = self.rounded_rectangle(
-            server, 1, 1, 340, 98, 23, fill=PANEL, outline="")
+            server, 1, 1, 340, 91, 27, fill=PANEL, outline="")
         self._server_label = server.create_text(
-            20, 22, text="АКТИВНЫЙ ПРОФИЛЬ", anchor="w",
+            21, 21, text="ВАШ СЕРВЕР", anchor="w",
             fill=MUTED, font=("DejaVu Sans", 9, "bold"))
         self._server_title = server.create_text(
-            20, 51, text="", anchor="w", fill=TEXT,
+            21, 48, text="", anchor="w", fill=TEXT,
             font=("DejaVu Sans", 14, "bold"))
         self._server_endpoint = server.create_text(
-            20, 77, text="", anchor="w", fill=MUTED,
+            21, 73, text="", anchor="w", fill=MUTED,
             font=("DejaVu Sans", 9))
         self.profile_title.trace_add("write", lambda *_: self._update_server_card())
         self.endpoint.trace_add("write", lambda *_: self._update_server_card())
         self._update_server_card()
 
-        nav = tk.Frame(self, bg=BG, pady=9)
+        nav = tk.Frame(self, bg=BG, pady=7)
         nav.pack(fill="x", padx=14, pady=(0, 9))
         for label, action, active in (
-            ("⌂  Главная", lambda: None, True),
             ("⚙  Настройки", self.open_settings, False),
             ("＋ Импорт", self.import_profile, False),
         ):
@@ -237,7 +240,7 @@ class App(tk.Tk):
     def _resize_server_card(self, event):
         self._server_card.coords(
             self._server_bg, *self._rounded_points(
-                1, 1, max(20, event.width - 1), 98, 23))
+                1, 1, max(20, event.width - 1), 91, 27))
 
     def _update_server_card(self):
         if not hasattr(self, "_server_card"):
@@ -585,6 +588,38 @@ class App(tk.Tk):
             callback()
         messagebox.showerror("NetherVPN", message[:800])
 
+    def confirm_full_tunnel(self):
+        """Theme-consistent confirmation instead of default gray Tk messagebox."""
+        dialog = tk.Toplevel(self)
+        dialog.title("Полный туннель")
+        dialog.geometry("375x290")
+        dialog.resizable(False, False)
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        approved = tk.BooleanVar(master=dialog, value=False)
+        body = tk.Frame(dialog, bg=BG, padx=24, pady=23)
+        body.pack(fill="both", expand=True)
+        self.label(body, "Весь трафик через VPN", 17, TEXT, "bold").pack(anchor="w")
+        message = ("IPv4 и DNS будут направлены через NetherVPN.\n"
+                   "IPv6 пока блокируется. При разрыве соединения\n"
+                   "интернет может временно стать недоступен.")
+        tk.Label(body, text=message, bg=BG, fg=MUTED,
+                 font=("DejaVu Sans", 10), justify="left",
+                 anchor="w").pack(fill="x", pady=(17, 22))
+        actions = tk.Frame(body, bg=BG)
+        actions.pack(fill="x", side="bottom")
+        def resolve(value):
+            approved.set(value)
+            dialog.destroy()
+        self.button(actions, "Отмена", lambda: resolve(False)).pack(
+            side="left", expand=True, fill="x", padx=(0, 6))
+        self.button(actions, "Включить", lambda: resolve(True), True).pack(
+            side="left", expand=True, fill="x", padx=(6, 0))
+        dialog.protocol("WM_DELETE_WINDOW", lambda: resolve(False))
+        dialog.grab_set()
+        self.wait_window(dialog)
+        return approved.get()
+
     def connect(self):
         if self.busy:
             return
@@ -602,12 +637,7 @@ class App(tk.Tk):
         if preferences is None:
             return
         mode = self.mode_var.get()
-        if mode == "full" and not messagebox.askyesno(
-            "Full Tunnel",
-            "Весь IPv4 и DNS компьютера будут направлены через VPN. IPv6 будет "
-            "заблокирован. При аварийном обрыве доступ в интернет может исчезнуть.\\n\\n"
-            "Включить полный туннель?"
-        ):
+        if mode == "full" and not self.confirm_full_tunnel():
             return
         if not Path(HELPER).is_file():
             messagebox.showerror("NetherVPN",
