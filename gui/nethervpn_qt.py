@@ -10,7 +10,7 @@ import time
 import shutil
 
 from PySide6.QtCore import Qt, QTimer, QThread, Signal, QRectF, QPointF, QSize, QEasingCurve, QPropertyAnimation, Property
-from PySide6.QtGui import QColor, QPainter, QPen, QFont, QIcon, QPixmap, QPainterPath, QRadialGradient
+from PySide6.QtGui import QColor, QPainter, QPen, QFont, QIcon, QPixmap, QPainterPath, QRadialGradient, QLinearGradient
 from PySide6.QtWidgets import (
     QApplication, QWidget, QMainWindow, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QFrame, QStackedWidget, QListWidget, QLineEdit, QComboBox,
@@ -37,8 +37,8 @@ AMBER = "#f7c574"
 STYLE = """
 QWidget { color: #eff8ff; font-family: 'DejaVu Sans', sans-serif; font-size: 12px; }
 QMainWindow, QWidget#appRoot, QStackedWidget, QWidget#page { background: #0c1727; }\nQWidget#sidebar { background: #0a1322; }\nQLabel { background: transparent; }
-QFrame#card { background: #14263b; border: 1px solid #213d55; border-radius: 22px; }
-QFrame#hero { background: #102638; border: 1px solid #1f4b60; border-radius: 26px; }
+QFrame#card { background: #14263b; border: 1px solid #234057; border-radius: 23px; }
+QFrame#heroScene { background: transparent; border: none; }
 QLabel#muted { color: #95b0c5; background: transparent; }
 QLabel#heading { font-size: 29px; font-weight: 700; background: transparent; }
 QLabel#metric { font-size: 19px; font-weight: 700; background: transparent; }
@@ -139,6 +139,44 @@ def profile_meta(path):
             cp.get("Interface", "Name", fallback="nvpn0"),
             cp.getboolean("Interface", "FullTunnel", fallback=False),
             cp.get("Interface", "DNS", fallback="1.1.1.1"))
+
+class HeroPanel(QFrame):
+    """Soft gradient scene behind the connection control, no boxed dashboard."""
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("heroScene")
+        self.setMinimumHeight(280)
+        self.setMaximumHeight(340)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(self.rect())
+        base = QLinearGradient(0, 0, rect.width(), rect.height())
+        base.setColorAt(0, QColor("#0c1d2e"))
+        base.setColorAt(.52, QColor("#103447"))
+        base.setColorAt(1, QColor("#0d2739"))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(base)
+        painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 29, 29)
+        # Faint layered contours make the middle area less flat without
+        # implying a real latency or geographic location.
+        width, height = rect.width(), rect.height()
+        for offset, alpha in ((0, 20), (25, 12)):
+            path = QPainterPath(QPointF(0, height * .75 + offset))
+            path.cubicTo(width * .22, height * .44 + offset,
+                         width * .29, height * .85 + offset,
+                         width * .55, height * .65 + offset)
+            path.cubicTo(width * .79, height * .48 + offset,
+                         width * .88, height * .74 + offset,
+                         width, height * .50 + offset)
+            path.lineTo(width, height)
+            path.lineTo(0, height)
+            path.closeSubpath()
+            painter.setBrush(QColor(27, 204, 194, alpha))
+            painter.drawPath(path)
+        painter.end()
+
 
 class Ring(QWidget):
     clicked = Signal()
