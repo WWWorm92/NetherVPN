@@ -188,36 +188,43 @@ all coexistence, DNS, upstream gateway forwarding/NAT or firewall issues.
 When confirming Full Tunnel, first verify a stable TUN and a kernel default
 route through `nvpn0`; then test the real external IPv4 and DNS.
 
-## Redesigned Linux dashboard (0.5 visual update)
+## Compact Linux desktop (0.6 visual update)
 
-The Tkinter dashboard is now larger, vertically scrollable, and uses the same
-midnight-navy/mint design language as Android. It contains a dedicated
-profile sidebar, connection hero, status indicator, one-click actions, traffic
-cards, Full/Split selection cards, local DNS, boot autoconnect and event
-journal. The dashboard supports smaller laptop displays without hiding the
-bottom settings and retains one polkit authorization per connect/disconnect.
+NetherVPN 0.6 replaces the oversized 1130×790 dashboard with a compact
+**410×690** window inspired by simple mobile VPN clients, but with independent
+NetherVPN branding. The center is a large, keyboard-accessible circle that
+connects/disconnects using the existing systemd/polkit helper. The accent ring
+reflects the systemd/TUN state; no route or Noise handshake is inferred from
+the button alone.
 
-The status indicator is linked to the **systemd client state and actual TUN
-interface**, rather than marking a selected radio button or a successful
-`pkexec` call as proof of connectivity. When reopened while the VPN is
-already running, the UI indicates an existing background systemd connection.
-For a confirmed encrypted session use the service log and test the real
-route/IP; TUN existence alone is not independent cryptographic verification.
+The minimal main screen shows the connection status, a local route summary,
+selected server and a three-button navigation:
+- **Главная** — connection circle and status.
+- **Настройки** — Full/Split, IPv4 DNS, boot autoconnect, diagnostics, live
+  statistics and an event log.
+- **＋ Импорт** — import a universal .conf profile.
 
-Install or refresh the desktop (existing secret profiles are preserved):
+Tap the **server card** to open a separate selector for existing profiles,
+import another profile, or remove a disconnected profile. No key contents
+are displayed on the home screen. Status/error details and traffic counters
+remain accessible from **Настройки → Статистика и диагностика**.
+
+All existing `.conf` files and per-profile `.prefs` remain unchanged.
+The Linux helper still performs one privileged authorization per connection
+or disconnect, and the VPN continues running as a service when the window
+closes.
 
 ```bash
 cd ~/NetherVPN
+git status --short
 git pull --ff-only
 sudo systemctl stop nethervpn-client
 bash scripts/install-desktop.sh
 python3 gui/nethervpn.py
 ```
 
-To see full encrypted tunnel status and dropped IPv6 packets:
-
-```bash
-sudo journalctl -u nethervpn-client -n 40 --no-pager
-ip -4 route get 1.1.1.1
-curl -4 --max-time 8 https://api.ipify.org
-```
+If `git pull` is blocked by local changes, inspect/backup those changes
+before updating. Do not reset private profiles or overwrite local changes.
+Android 0.6 Alpha debug APK is published by the Android Actions workflow
+when merged to `main`. This UI redesign does not modify VPN protocol or
+gateway configuration.

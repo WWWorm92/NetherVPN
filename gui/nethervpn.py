@@ -2,6 +2,7 @@
 """NetherVPN Linux desktop client, backed by a privileged systemd service."""
 import configparser
 from client_preferences import encode, decode
+from app_icon import create_icon
 import threading
 import os
 from pathlib import Path
@@ -17,12 +18,12 @@ BASE = Path.home() / ".config" / "nethervpn" / "profiles"
 APP_ROOT = Path(__file__).resolve().parent.parent
 CLIENT = APP_ROOT / "bin" / "nether-client"
 HELPER = "/usr/local/libexec/nether-desktop-helper"
-BG = "#0a121f"
-PANEL = "#142233"
-TEXT = "#f1f7ff"
-MUTED = "#9db3c9"
-ACCENT = "#3ad9b8"
-RAISED = "#1d3045"
+BG = "#101115"
+PANEL = "#1d1e24"
+TEXT = "#f6f7f9"
+MUTED = "#a1a4ae"
+ACCENT = "#ffb15c"
+RAISED = "#292b33"
 AMBER = "#ffc067"
 ERROR = "#ff7282"
 
@@ -38,9 +39,12 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("NetherVPN")
-        self.geometry("1130x790")
-        self.minsize(870, 610)
+        self.geometry("410x690")
+        self.minsize(360, 580)
         self.configure(bg=BG)
+        # App switcher/titlebar icon matches the Linux SVG and Android launcher.
+        self._app_icon = create_icon(self)
+        self.iconphoto(True, self._app_icon)
         BASE.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(BASE, 0o700)
         self.process = None
@@ -55,6 +59,13 @@ class App(tk.Tk):
         self.service_running = False
         self.items = []
         self.selected_name = None
+        self.log_history = []
+        self.logbox = None
+        self.profile_list = None
+        self.mode_buttons = {}
+        self.settings_window = None
+        self.profile_window = None
+        self.profile_title = tk.StringVar(value="Выбрать сервер")
         self.state = tk.StringVar(value="Не подключено")
         self.endpoint = tk.StringVar(value="Выберите профиль")
         self.mode_text = tk.StringVar(value="Выберите профиль")
@@ -87,211 +98,262 @@ class App(tk.Tk):
                          relief="flat", bd=0, padx=16, pady=11,
                          cursor="hand2", highlightthickness=0)
 
-    def heading(self, parent, title, subtitle=None):
-        self.label(parent, title, 10, MUTED, "bold").pack(anchor="w")
-        if subtitle:
-            self.label(parent, subtitle, 11, MUTED).pack(anchor="w", pady=(6, 0))
-
     def _ui(self):
-        # Spacious, vertically scrollable dashboard: no controls disappear
-        # below the screen on 900x650 laptops.
+        """Single-screen compact client; advanced controls live in dialogs."""
         top = tk.Frame(self, bg=BG)
-        top.pack(fill="x", padx=30, pady=(23, 16))
-        logo = tk.Label(top, text="◈", bg=RAISED, fg=ACCENT,
-                        font=("DejaVu Sans", 25, "bold"), width=3, height=1)
-        logo.pack(side="left")
-        brand = tk.Frame(top, bg=BG)
-        brand.pack(side="left", padx=13)
-        self.label(brand, "NetherVPN", 23, TEXT, "bold").pack(anchor="w")
-        self.label(brand, "ЗАЩИЩЁННАЯ СЕТЬ  /  LINUX", 9, MUTED, "bold").pack(anchor="w")
-        self.label(top, "EXP  •  Noise IK  •  IPv4", 10, MUTED, "bold").pack(
-            side="right", pady=(12, 0))
+        top.pack(fill="x", padx=22, pady=(19, 9))
+        self._header_icon = self._app_icon.subsample(2, 2)
+        tk.Label(top, image=self._header_icon, bg=BG, bd=0).pack(
+            side="left", padx=(0, 9))
+        self.label(top, "NetherVPN", 17, TEXT, "bold").pack(side="left")
+        self.label(top, "LINUX  ·  BETA", 9, MUTED, "bold").pack(
+            side="right", pady=(7, 0))
 
-        body = tk.Frame(self, bg=BG)
-        body.pack(fill="both", expand=True, padx=30, pady=(0, 16))
+        center = tk.Frame(self, bg=BG)
+        center.pack(fill="both", expand=True, padx=15)
+        # A canvas ring keeps the same composition on small Linux desktops
+        # without embedding unmaintainable screenshots or external fonts.
+        self.connect_btn = tk.Canvas(center, width=246, height=246, bg=BG,
+                                     bd=0, highlightthickness=0,
+                                     cursor="hand2", takefocus=1)
+        self.connect_btn.pack(expand=True, pady=(10, 5))
+        self.outer_ring = self.connect_btn.create_oval(
+            12, 12, 234, 234, outline=RAISED, width=4)
+        self.inner_ring = self.connect_btn.create_oval(
+            18, 18, 228, 228, outline="#353941", width=1)
+        self.power_text = self.connect_btn.create_text(
+            123, 118, text="Подключить", fill=TEXT,
+            font=("DejaVu Sans", 16, "bold"), anchor="center")
+        self.power_subtext = self.connect_btn.create_text(
+            123, 146, text="Нажмите, чтобы включить",
+            fill=MUTED, font=("DejaVu Sans", 9))
+        self.connect_btn.bind("<Button-1>", lambda _e: self.toggle_connection())
+        self.connect_btn.bind("<Return>", lambda _e: self.toggle_connection())
+        self.connect_btn.bind("<space>", lambda _e: self.toggle_connection())
 
-        sidebar = tk.Frame(body, bg=PANEL, width=238)
-        sidebar.pack(side="left", fill="y", padx=(0, 16))
-        sidebar.pack_propagate(False)
-        self.label(sidebar, "ПРОФИЛИ", 10, MUTED, "bold").pack(
-            anchor="w", padx=19, pady=(22, 4))
-        self.label(sidebar, "Ваши устройства", 12, TEXT).pack(
-            anchor="w", padx=19, pady=(0, 14))
-        self.listbox = tk.Listbox(sidebar, bg=PANEL, fg=TEXT,
-                                 font=("DejaVu Sans", 12), relief="flat",
-                                 selectbackground="#225d62",
-                                 selectforeground=TEXT,
-                                 activestyle="none", bd=0,
-                                 highlightthickness=0, exportselection=False)
-        self.listbox.pack(fill="both", expand=True, padx=13)
-        self.listbox.bind("<<ListboxSelect>>", self.on_select)
-        manage = tk.Frame(sidebar, bg=PANEL)
-        manage.pack(fill="x", padx=13, pady=(13, 15))
-        self.button(manage, "+ Импорт", self.import_profile, True).pack(
-            side="left", padx=(0, 7))
-        self.button(manage, "Удалить", self.delete).pack(side="left")
-        self.label(sidebar, "Каждому устройству — свой ключ.",
-                   9, MUTED).pack(anchor="w", padx=19, pady=(0, 18))
+        self.status_badge = tk.Label(
+            center, textvariable=self.status_tag, bg=BG, fg=MUTED,
+            font=("DejaVu Sans", 10, "bold"))
+        self.status_badge.pack(pady=(0, 4))
+        tk.Label(center, textvariable=self.status_hint, bg=BG, fg=MUTED,
+                 font=("DejaVu Sans", 9)).pack(pady=(0, 6))
 
-        scrollframe = tk.Frame(body, bg=BG)
-        scrollframe.pack(side="left", fill="both", expand=True)
-        canvas = tk.Canvas(scrollframe, bg=BG, relief="flat",
-                           highlightthickness=0, bd=0)
-        scrollbar = tk.Scrollbar(scrollframe, orient="vertical",
-                                 command=canvas.yview)
-        scrollbar.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-        canvas.configure(yscrollcommand=scrollbar.set)
-        inner = tk.Frame(canvas, bg=BG)
-        window = canvas.create_window((0, 0), window=inner, anchor="nw")
-        inner.bind("<Configure>",
-                   lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.bind("<Configure>",
-                    lambda event: canvas.itemconfigure(window, width=event.width))
-        def wheel(event):
-            if event.num == 4:
-                amount = -3
-            elif event.num == 5:
-                amount = 3
-            else:
-                amount = -int(event.delta / 120) * 3
-            canvas.yview_scroll(amount, "units")
-        canvas.bind("<MouseWheel>", wheel)
-        canvas.bind("<Button-4>", wheel)
-        canvas.bind("<Button-5>", wheel)
-        inner.bind("<MouseWheel>", wheel)
+        lower = tk.Frame(self, bg=BG)
+        lower.pack(fill="x", padx=18, pady=(0, 10))
+        # Route policy is a one-tap shortcut, not a screen full of settings.
+        self.mode_row = tk.Button(
+            lower, textvariable=self.mode_text, bg=BG, fg=MUTED,
+            activebackground=BG, activeforeground=TEXT,
+            font=("DejaVu Sans", 10), bd=0, relief="flat",
+            cursor="hand2", pady=11, command=self.open_settings)
+        self.mode_row.pack(fill="x", pady=(1, 8))
+        selected = tk.Frame(lower, bg=PANEL, padx=15, pady=13)
+        selected.pack(fill="x")
+        tk.Label(selected, text="СЕРВЕР", bg=PANEL, fg=MUTED,
+                 font=("DejaVu Sans", 9, "bold")).pack(anchor="w")
+        self.profile_btn = tk.Button(
+            selected, textvariable=self.profile_title,
+            bg=PANEL, fg=TEXT, activebackground=PANEL,
+            activeforeground=ACCENT, font=("DejaVu Sans", 15, "bold"),
+            relief="flat", bd=0, cursor="hand2", anchor="w",
+            command=self.open_profiles)
+        self.profile_btn.pack(fill="x", pady=(4, 1))
+        tk.Label(selected, textvariable=self.endpoint, bg=PANEL, fg=MUTED,
+                 font=("DejaVu Sans", 9), anchor="w").pack(fill="x")
 
-        hero = tk.Frame(inner, bg="#1a3445", padx=24, pady=21)
-        hero.pack(fill="x", pady=(0, 14))
-        self.heading(hero, "ЗАЩИЩЁННОЕ СОЕДИНЕНИЕ")
-        self.status_badge = tk.Label(hero, textvariable=self.status_tag,
-                                     bg="#1a3445", fg=MUTED,
-                                     font=("DejaVu Sans", 10, "bold"),
-                                     anchor="w")
-        self.status_badge.pack(anchor="w", pady=(16, 8))
-        tk.Label(hero, textvariable=self.state, bg="#1a3445", fg=TEXT,
-                 font=("DejaVu Sans", 22, "bold"), anchor="w").pack(fill="x")
-        tk.Label(hero, textvariable=self.status_hint, bg="#1a3445", fg=MUTED,
-                 font=("DejaVu Sans", 10), anchor="w").pack(fill="x", pady=(5, 13))
-        tk.Label(hero, textvariable=self.endpoint, bg="#1a3445", fg=ACCENT,
-                 font=("DejaVu Sans Mono", 10), anchor="w").pack(fill="x")
-        row = tk.Frame(hero, bg="#1a3445")
-        row.pack(anchor="w", pady=(18, 0))
-        self.connect_btn = self.button(row, "◈  Подключить", self.connect, True)
-        self.connect_btn.pack(side="left", padx=(0, 9))
-        self.disconnect_btn = self.button(row, "Отключить", self.disconnect)
-        self.disconnect_btn.pack(side="left", padx=(0, 9))
-        self.button(row, "Диагностика ↗", self.inspect_connection).pack(
-            side="left")
+        nav = tk.Frame(self, bg=PANEL, pady=11)
+        nav.pack(fill="x")
+        self.button(nav, "⌂  Главная", lambda: None, True).pack(
+            side="left", expand=True)
+        self.button(nav, "⚙  Настройки", self.open_settings).pack(
+            side="left", expand=True)
+        self.button(nav, "＋  Импорт", self.import_profile).pack(
+            side="left", expand=True)
+        self.log("Приложение готово. Настройки доступны отдельно.")
 
-        stats = tk.Frame(inner, bg=BG)
-        stats.pack(fill="x", pady=(0, 14))
-        for title, var in (("↑ ОТПРАВЛЕНО", self.tx),
-                           ("↓ ПОЛУЧЕНО", self.rx),
-                           ("ВРЕМЯ В СЕТИ", self.timing)):
-            cell = tk.Frame(stats, bg=PANEL, padx=15, pady=14)
-            cell.pack(side="left", fill="both", expand=True, padx=(0, 9))
-            self.label(cell, title, 9, MUTED, "bold").pack(anchor="w")
-            tk.Label(cell, textvariable=var, bg=PANEL, fg=TEXT,
-                     font=("DejaVu Sans", 16, "bold"),
-                     anchor="w").pack(anchor="w", pady=(9, 0))
-        tk.Label(inner, textvariable=self.speed, bg=BG, fg=ACCENT,
-                 font=("DejaVu Sans", 10, "bold"), anchor="w").pack(
-                     fill="x", pady=(0, 14))
+    def toggle_connection(self):
+        if self.busy:
+            return
+        if self.service_is_running():
+            self.disconnect()
+        else:
+            self.connect()
 
-        settings = tk.Frame(inner, bg=PANEL, padx=22, pady=20)
-        settings.pack(fill="x", pady=(0, 14))
-        self.heading(settings, "НАСТРОЙКИ ПОДКЛЮЧЕНИЯ",
-                     "Выберите, какой трафик направлять через VPN.")
-        choices = tk.Frame(settings, bg=PANEL)
-        choices.pack(fill="x", pady=(14, 12))
+    def open_settings(self):
+        if self.settings_window is not None and self.settings_window.winfo_exists():
+            self.settings_window.lift()
+            return
+        win = tk.Toplevel(self)
+        self.settings_window = win
+        win.title("NetherVPN · Настройки")
+        win.geometry("390x540")
+        win.minsize(340, 500)
+        win.configure(bg=BG)
+        win.transient(self)
+        container = tk.Frame(win, bg=BG, padx=23, pady=20)
+        container.pack(fill="both", expand=True)
+        self.label(container, "Настройки подключения", 18, TEXT, "bold").pack(
+            anchor="w", pady=(0, 17))
+        self.label(container, "МАРШРУТИЗАЦИЯ", 10, MUTED, "bold").pack(anchor="w")
         self.mode_buttons = {}
-        for value, title, caption in (
-            ("full", "Весь IPv4 через VPN", "Весь интернет-трафик через сервер"),
-            ("split", "Раздельный туннель", "Только сеть VPN-сервера"),
-        ):
-            cell = tk.Frame(choices, bg=RAISED, padx=12, pady=10)
-            cell.pack(side="left", fill="both", expand=True,
-                      padx=(0, 10) if value == "full" else 0)
+        for value, caption in (("full", "Весь IPv4 через VPN"),
+                               ("split", "Только адрес VPN-сервера")):
             radio = tk.Radiobutton(
-                cell, text=title, variable=self.mode_var, value=value,
-                indicatoron=False, bg=RAISED, fg=TEXT, selectcolor="#225d62",
-                activebackground="#23545b", activeforeground=TEXT,
-                font=("DejaVu Sans", 10, "bold"), relief="flat",
-                bd=0, padx=8, pady=8, cursor="hand2",
-                command=self.refresh_mode_label)
-            radio.pack(fill="x")
-            self.label(cell, caption, 9, MUTED).pack(anchor="w", padx=7)
+                container, text=caption, variable=self.mode_var, value=value,
+                bg=BG, fg=TEXT, selectcolor=RAISED,
+                activebackground=BG, activeforeground=TEXT,
+                font=("DejaVu Sans", 11), command=self.refresh_mode_label)
+            radio.pack(fill="x", anchor="w", pady=(10, 0))
             self.mode_buttons[value] = radio
-
-        self.label(settings, "DNS для Full Tunnel", 10, MUTED, "bold").pack(
-            anchor="w", pady=(6, 7))
-        tk.Entry(settings, textvariable=self.dns_var, bg=RAISED, fg=TEXT,
-                 insertbackground=TEXT, relief="flat", bd=0,
-                 font=("DejaVu Sans Mono", 12)).pack(
-                     fill="x", ipady=10)
+        self.label(container, "DNS для полного туннеля", 10, MUTED).pack(
+            anchor="w", pady=(18, 6))
+        tk.Entry(container, textvariable=self.dns_var, bg=RAISED,
+                 fg=TEXT, insertbackground=TEXT,
+                 relief="flat", font=("DejaVu Sans Mono", 11)).pack(
+                     fill="x", ipady=9)
         tk.Checkbutton(
-            settings, text="Подключать при запуске Linux",
-            variable=self.autostart_var, bg=PANEL, fg=TEXT,
-            selectcolor=RAISED, activebackground=PANEL,
-            activeforeground=TEXT, font=("DejaVu Sans", 10),
-            relief="flat", cursor="hand2").pack(anchor="w", pady=(11, 10))
-        controls = tk.Frame(settings, bg=PANEL)
-        controls.pack(fill="x")
-        self.button(controls, "Сохранить настройки",
-                    self.save_settings).pack(side="left")
-        tk.Label(controls, textvariable=self.mode_text, bg=PANEL,
-                 fg=ACCENT, font=("DejaVu Sans", 9),
-                 anchor="w").pack(side="left", padx=13)
+            container, text="Подключать при запуске Linux",
+            variable=self.autostart_var, bg=BG, fg=TEXT,
+            selectcolor=RAISED, activebackground=BG,
+            activeforeground=TEXT, font=("DejaVu Sans", 10)).pack(
+                anchor="w", pady=(16, 13))
+        self.button(container, "Сохранить настройки",
+                    lambda: self.save_settings()).pack(fill="x")
+        self.button(container, "Статистика и диагностика",
+                    self.open_diagnostics).pack(fill="x", pady=(12, 0))
+        self.button(container, "Журнал событий",
+                    self.open_logs).pack(fill="x", pady=(7, 0))
+        self.label(container, "IPv6 в Full Tunnel пока блокируется.",
+                   9, MUTED).pack(anchor="w", pady=(13, 0))
+        def close():
+            self.mode_buttons = {}
+            self.settings_window = None
+            win.destroy()
+        win.protocol("WM_DELETE_WINDOW", close)
+        self.refresh_mode_buttons()
 
-        journal = tk.Frame(inner, bg=PANEL, padx=22, pady=18)
-        journal.pack(fill="both", expand=True, pady=(0, 14))
-        self.heading(journal, "ЖУРНАЛ СОБЫТИЙ",
-                     "Сообщения о подключении и диагностике.")
-        self.logbox = tk.Text(journal, bg=BG, fg="#d0dfed",
-                              insertbackground=TEXT, height=7, bd=0,
-                              font=("DejaVu Sans Mono", 9), state="disabled",
-                              relief="flat", wrap="word", padx=10, pady=10)
-        self.logbox.pack(fill="both", expand=True, pady=(12, 0))
-        self.log("NetherVPN готов. Режим и DNS выбираются локально.")
+    def open_profiles(self):
+        if self.profile_window is not None and self.profile_window.winfo_exists():
+            self.profile_window.lift()
+            return
+        win = tk.Toplevel(self)
+        self.profile_window = win
+        win.title("NetherVPN · Серверы")
+        win.geometry("370x430")
+        win.minsize(330, 350)
+        win.configure(bg=BG)
+        win.transient(self)
+        frame = tk.Frame(win, bg=BG, padx=20, pady=18)
+        frame.pack(fill="both", expand=True)
+        self.label(frame, "Выберите сервер", 18, TEXT, "bold").pack(
+            anchor="w", pady=(0, 14))
+        self.profile_list = tk.Listbox(
+            frame, bg=PANEL, fg=TEXT, font=("DejaVu Sans", 12),
+            relief="flat", bd=0, highlightthickness=0,
+            selectbackground="#245d62", selectforeground=TEXT,
+            exportselection=False)
+        self.profile_list.pack(fill="both", expand=True)
+        self.refresh()
+        def choose(_event=None):
+            selected = self.profile_list.curselection()
+            if selected and selected[0] < len(self.items):
+                self.selected_name = self.items[selected[0]].name
+                self.on_select()
+                close()
+        self.profile_list.bind("<Double-Button-1>", choose)
+        self.button(frame, "Выбрать", choose, True).pack(fill="x", pady=(13, 6))
+        actions = tk.Frame(frame, bg=BG)
+        actions.pack(fill="x")
+        self.button(actions, "＋ Импорт", self.import_profile).pack(
+            side="left", expand=True)
+        self.button(actions, "Удалить", self.delete).pack(
+            side="left", expand=True)
+        def close():
+            self.profile_list = None
+            self.profile_window = None
+            win.destroy()
+        win.protocol("WM_DELETE_WINDOW", close)
 
-        self.label(inner,
-                   "Full Tunnel: IPv4 и DNS через VPN; IPv6 блокируется. "
-                   "Для блокировки после сбоя проверяйте политику маршрутов.",
-                   9, MUTED).pack(anchor="w", pady=(0, 14))
-        self.refresh_mode_label()
+    def open_diagnostics(self):
+        self.inspect_connection()
+        win = tk.Toplevel(self)
+        win.title("NetherVPN · Статистика")
+        win.geometry("390x320")
+        win.configure(bg=BG)
+        win.transient(self)
+        body = tk.Frame(win, bg=BG, padx=24, pady=22)
+        body.pack(fill="both", expand=True)
+        self.label(body, "Статистика соединения", 18, TEXT, "bold").pack(
+            anchor="w", pady=(0, 16))
+        for title, value in (("ОТПРАВЛЕНО", self.tx),
+                             ("ПОЛУЧЕНО", self.rx),
+                             ("ВРЕМЯ", self.timing),
+                             ("СКОРОСТЬ", self.speed)):
+            row = tk.Frame(body, bg=BG)
+            row.pack(fill="x", pady=7)
+            self.label(row, title, 9, MUTED).pack(side="left")
+            tk.Label(row, textvariable=value, bg=BG, fg=ACCENT,
+                     font=("DejaVu Sans", 11, "bold")).pack(side="right")
+        self.button(body, "Посмотреть журнал", self.open_logs).pack(
+            fill="x", pady=(12, 0))
+
+    def open_logs(self):
+        win = tk.Toplevel(self)
+        win.title("NetherVPN · Журнал")
+        win.geometry("540x360")
+        win.configure(bg=BG)
+        win.transient(self)
+        self.logbox = tk.Text(
+            win, bg=PANEL, fg=TEXT, insertbackground=TEXT,
+            font=("DejaVu Sans Mono", 9), wrap="word",
+            state="normal", relief="flat", bd=0, padx=12, pady=12)
+        self.logbox.pack(fill="both", expand=True, padx=14, pady=14)
+        self.logbox.insert("end", "".join(self.log_history))
+        self.logbox.see("end")
+        self.logbox.configure(state="disabled")
+        def close():
+            self.logbox = None
+            win.destroy()
+        win.protocol("WM_DELETE_WINDOW", close)
 
     def refresh_mode_buttons(self):
-        if not hasattr(self, "mode_buttons"):
-            return
-        for value, radio in self.mode_buttons.items():
-            chosen = self.mode_var.get() == value
-            radio.configure(bg="#225d62" if chosen else RAISED,
-                            activebackground="#225d62" if chosen else RAISED,
-                            fg=TEXT)
+        for value, radio in list(self.mode_buttons.items()):
+            if radio.winfo_exists():
+                radio.configure(fg=ACCENT if self.mode_var.get() == value
+                                else TEXT)
 
     def log(self, msg):
         line = time.strftime("%H:%M:%S") + "  " + msg.rstrip() + "\n"
-        self.logbox.configure(state="normal")
-        self.logbox.insert("end", line)
-        self.logbox.see("end")
-        self.logbox.configure(state="disabled")
+        self.log_history.append(line)
+        # Bound memory without discarding useful recent diagnostics.
+        if len(self.log_history) > 250:
+            self.log_history = self.log_history[-200:]
+        if self.logbox is not None and self.logbox.winfo_exists():
+            self.logbox.configure(state="normal")
+            self.logbox.insert("end", line)
+            self.logbox.see("end")
+            self.logbox.configure(state="disabled")
 
     def refresh(self):
-        name = self.selected_name
-        self.items = sorted(p for p in BASE.glob("*.conf") if p.is_file() and not p.is_symlink())
-        self.listbox.delete(0, "end")
-        for p in self.items:
-            self.listbox.insert("end", p.stem)
-        for i, p in enumerate(self.items):
-            if p.name == name:
-                self.listbox.selection_set(i)
-                self.listbox.activate(i)
+        previous = self.selected_name
+        self.items = sorted(p for p in BASE.glob("*.conf")
+                            if p.is_file() and not p.is_symlink())
+        if previous not in {p.name for p in self.items}:
+            self.selected_name = self.items[0].name if self.items else None
+        if self.profile_list is not None and self.profile_list.winfo_exists():
+            self.profile_list.delete(0, "end")
+            for idx, item in enumerate(self.items):
+                self.profile_list.insert("end", item.stem)
+                if item.name == self.selected_name:
+                    self.profile_list.selection_set(idx)
         self.on_select()
 
     def selected(self):
-        sel = self.listbox.curselection()
-        return self.items[sel[0]] if sel and sel[0] < len(self.items) else None
+        if self.selected_name:
+            for item in self.items:
+                if item.name == self.selected_name:
+                    return item
+        return None
 
     @staticmethod
     def preferences_path(path):
@@ -308,30 +370,31 @@ class App(tk.Tk):
 
     def refresh_mode_label(self):
         if self.mode_var.get() == "full":
-            self.mode_text.set("Весь IPv4 через VPN · DNS " + self.dns_var.get()
-                               + " · IPv6 блокируется")
+            self.mode_text.set("Весь IPv4 через VPN   ⌄")
         else:
-            self.mode_text.set("Только VPN-сервер · интернет без изменений")
+            self.mode_text.set("Раздельный туннель   ⌄")
         self.refresh_mode_buttons()
 
     def on_select(self, _event=None):
         path = self.selected()
         if path:
-            self.selected_name = path.name
             try:
                 peer, _, _, _ = profile_meta(path)
                 mode, dns, auto = self.load_choices(path)
                 self.endpoint.set(peer)
+                self.profile_title.set(path.stem + "   ⌄")
                 self.mode_var.set(mode)
                 self.dns_var.set(dns)
                 self.autostart_var.set(auto)
                 self.refresh_mode_label()
             except (OSError, ValueError, configparser.Error) as exc:
                 self.endpoint.set("Ошибка конфигурации")
+                self.profile_title.set(path.stem + "   ⌄")
                 self.log(str(exc))
-        elif not self.active:
-            self.endpoint.set("Выберите профиль")
-            self.mode_text.set("Выберите профиль")
+        else:
+            self.profile_title.set("Добавить сервер   ＋")
+            self.endpoint.set("Профиль ещё не загружен")
+            self.refresh_mode_label()
 
     def save_settings(self, notify=True):
         profile = self.selected()
@@ -399,8 +462,8 @@ class App(tk.Tk):
         path = self.selected()
         if not path:
             return
-        if self.active == path:
-            messagebox.showwarning("NetherVPN", "Отключите VPN перед удалением активного профиля")
+        if self.active == path or self.service_is_running():
+            messagebox.showwarning("NetherVPN", "Отключите VPN перед удалением профиля")
             return
         if messagebox.askyesno("Удалить профиль", "Удалить " + path.stem + "?"):
             path.unlink()
@@ -575,30 +638,53 @@ class App(tk.Tk):
                 self.service_running = False
         return self.service_running
 
+    def update_power(self, running, ready=False):
+        if self.busy:
+            color = AMBER
+            title = "Подключение…"
+            subtitle = "Выполняется операция"
+        elif ready:
+            color = ACCENT
+            title = "Отключить"
+            subtitle = "VPN активен"
+        elif running:
+            color = AMBER
+            title = "Отключить"
+            subtitle = "Ожидание туннеля"
+        else:
+            color = "#59606e"
+            title = "Подключить"
+            subtitle = "Нажмите для включения"
+        self.connect_btn.itemconfigure(self.outer_ring, outline=color)
+        self.connect_btn.itemconfigure(self.power_text, text=title, fill=TEXT)
+        self.connect_btn.itemconfigure(self.power_subtext, text=subtitle, fill=MUTED)
+        self.connect_btn.configure(state="disabled" if self.busy else "normal")
+
     def tick(self):
         running = self.service_is_running()
         active = self.active
+        ready = False
         if running and active:
-            has_tun = self.stats()
-            if has_tun:
+            ready = self.stats()
+            if ready:
                 self.state.set("Туннель подключён")
                 self.status_tag.set("●  СОЕДИНЕНИЕ АКТИВНО")
-                self.status_hint.set("TUN-интерфейс работает · шифрование Noise IK")
+                self.status_hint.set("VPN-интерфейс работает")
                 self.status_badge.configure(fg=ACCENT)
             else:
                 self.state.set("Подключение…")
                 self.status_tag.set("●  ОЖИДАНИЕ ТУННЕЛЯ")
-                self.status_hint.set("Аутентификация и создание интерфейса")
+                self.status_hint.set("Подключаемся к серверу")
                 self.status_badge.configure(fg=AMBER)
             if self.since:
                 seconds = int(time.monotonic() - self.since)
-                self.timing.set(f"{seconds // 3600:02d}:{(seconds // 60) % 60:02d}:{seconds % 60:02d}")
+                self.timing.set(
+                    f"{seconds // 3600:02d}:{(seconds // 60) % 60:02d}:{seconds % 60:02d}")
         elif running:
-            # A GUI restart must not falsely display "disconnected" while
-            # the systemd client continues independently in the background.
+            # The VPN may run as a boot service before opening this GUI.
             self.state.set("VPN работает в фоне")
-            self.status_tag.set("●  СЛУЖБА ЗАПУЩЕНА")
-            self.status_hint.set("Для диагностики нажмите «Диагностика»")
+            self.status_tag.set("●  VPN-СЛУЖБА ЗАПУЩЕНА")
+            self.status_hint.set("Статус туннеля смотрите в диагностике")
             self.status_badge.configure(fg=AMBER)
         elif not self.busy:
             if self.active is not None:
@@ -607,18 +693,17 @@ class App(tk.Tk):
                 self.since = None
             self.state.set("VPN выключен")
             self.status_tag.set("●  НЕ ПОДКЛЮЧЕНО")
-            self.status_hint.set("Выберите профиль и подключитесь")
+            self.status_hint.set("Можно выбрать другой сервер")
             self.status_badge.configure(fg=MUTED)
             self.timing.set("00:00:00")
-        self.connect_btn.configure(state="disabled" if self.busy else "normal")
-        self.disconnect_btn.configure(state="disabled" if self.busy or not running else "normal")
+        self.update_power(running, ready)
         self.after(1000, self.tick)
 
     def close_app(self):
         if self.busy:
             messagebox.showinfo("NetherVPN", "Дождитесь окончания операции")
             return
-        if self.active and not messagebox.askyesno("NetherVPN", "Закрыть окно? VPN продолжит работать как служба."):
+        if self.service_is_running() and not messagebox.askyesno("NetherVPN", "Закрыть окно? VPN продолжит работать как служба."):
             return
         self.destroy()
 

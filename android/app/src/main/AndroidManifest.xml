@@ -6,7 +6,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:label="NetherVPN"
-        android:icon="@drawable/ic_nethervpn"
+        android:icon="@mipmap/ic_nethervpn"
+        android:roundIcon="@mipmap/ic_nethervpn"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:allowBackup="false"
         android:usesCleartextTraffic="false">

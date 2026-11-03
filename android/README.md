@@ -1,12 +1,19 @@
-# NetherVPN Android — 0.5 Alpha
+# NetherVPN Android — 0.6 Alpha
 
 **Experimental / unaudited VPN.** This is an Android VpnService implementation
 of the NetherVPN custom Noise IK protocol. Android 8+ (API 26+) is required.
 
-The new 0.5 interface follows the same dark navy/mint style as the Linux
-desktop. It has a prominent connection status and button, session traffic
-counters, discarded packet counter, elapsed time, Full/Split mode, local DNS,
-secure profile import and an Android system VPN settings shortcut.
+The compact 0.6 interface follows the same graphite-and-amber visual language
+as the Linux desktop. The **single circular control** on the home screen
+connects/disconnects the VPN, with status and compact traffic information below.
+Tap the **route row** to change Full/Split and DNS, tap the **server card** to
+import/replace/delete a profile, or use the bottom Home/Settings/Import bar.
+Tap the traffic counters to see full statistics and packet-drop diagnostics.
+
+Currently Android keeps **one active encrypted profile** in Android Keystore;
+the server selector is an import/replace manager, not yet a multi-profile
+collection. Import a separate unique .conf for each phone, rather than reusing
+Linux credentials.
 
 ## Install
 
@@ -46,10 +53,10 @@ AllowedIPs = 10.77.0.1
 No platform flag, DNS, or Full/Split setting is required in this file. Routing
 mode and DNS are private per-device preferences that do not modify the server.
 
-To connect: import `.conf` with **＋ Импортировать**, select **Весь IPv4 через
-VPN** or **Только VPN-сервер**, choose an IPv4 DNS address (e.g.
-`1.1.1.1`), tap **Сохранить настройки**, then **Подключить**. Mode and DNS
-changes are applied when the session reconnects.
+To connect: tap **＋ Импорт** to load the .conf. Tap **Настройки** to select
+**Весь IPv4 через VPN** or **Только VPN-сервер**, enter an IPv4 DNS address
+(e.g. `1.1.1.1`) and save. Then tap the **large circle** to connect.
+Tap it again to disconnect. Settings changes take effect upon reconnecting.
 
 ## Linux parity and packet safety
 
@@ -76,7 +83,7 @@ native IPv6 egress yet; in Full Tunnel an IPv6 default route is intercepted and
 IPv6 packets intentionally dropped.
 
 **Always-on and block-without-VPN are Android OS policies, not application
-checkboxes.** Open **Настройки VPN в Android** from the dashboard, select
+checkboxes.** Open **Настройки → Постоянная VPN** from the client, select
 NetherVPN and enable both options if desired. Without OS lockdown, apps may
 use the physical network during disconnects/reconnects.
 
