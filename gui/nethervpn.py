@@ -349,39 +349,25 @@ class App(tk.Tk):
             "Включить полный туннель?"
         ):
             return
+        if not Path(HELPER).is_file():
+            messagebox.showerror("NetherVPN",
+                "Не найден помощник. Повторите: bash scripts/install-desktop.sh")
+            return
         self.active = profile
         self.since = time.monotonic()
         self.previous_counters = None
 
-        def launched():
-            self.log("NetherVPN запущен: " + profile.stem)
-            self.state.set("Проверка соединения…")
-            # Applies on next machine boot; does not disturb this session.
-            command = "enable" if self.autostart_var.get() else "disable"
-            self.privileged(
-                ["/usr/bin/systemctl", command, "nethervpn-client.service"],
-                lambda: self.log("Автоподключение при запуске ОС: " +
-                                 ("включено" if command == "enable" else "отключено"))
-            )
+        def started():
+            self.log("Служба запущена: " + profile.stem)
+            self.state.set("Ожидание защищённого соединения…")
+            self.inspect_connection()
 
-        def settings_installed():
-            self.privileged(
-                ["/usr/bin/systemctl", "restart", "nethervpn-client.service"],
-                launched
-            )
+        def failed():
+            self.active = None
+            self.previous_counters = None
 
-        def profile_installed():
-            self.privileged([
-                "/usr/bin/install", "-m", "600", "-o", "root", "-g", "root",
-                str(preferences), "/etc/nethervpn/client-settings.conf"
-            ], settings_installed)
-
-        # Both identity and preferences are copied with 0600; only systemd
-        # starts the privileged client. The private key never enters argv.
-        self.privileged([
-            "/usr/bin/install", "-m", "600", "-o", "root", "-g", "root",
-            str(profile), "/etc/nethervpn/client.conf"
-        ], profile_installed)
+        # One pkexec operation for profile, settings, service and autostart.
+        self.privileged(["connect", profile.name], started, failed)
 
     def disconnect(self):
         if self.busy:
@@ -391,7 +377,7 @@ class App(tk.Tk):
             self.previous_counters = None
             self.state.set("Не подключено")
             self.log("Служба NetherVPN остановлена")
-        self.privileged(["/usr/bin/systemctl", "stop", "nethervpn-client.service"], stopped)
+        self.privileged(["disconnect"], stopped)
 
     def read_log(self):
         if not self.logfile:
