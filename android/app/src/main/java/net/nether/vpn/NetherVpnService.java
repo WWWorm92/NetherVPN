@@ -59,6 +59,7 @@ public final class NetherVpnService extends VpnService {
     private volatile String socketBeforeTun = "unknown";
     private volatile String socketAfterTun = "unknown";
     private volatile String underlyingAdvertisement = "unset";
+    private volatile String tunOrder = "unknown";
     private final AtomicLong keepalivePongs = new AtomicLong();
     private final AtomicLong keepalivePings = new AtomicLong();
     private volatile boolean running;
@@ -121,6 +122,7 @@ public final class NetherVpnService extends VpnService {
             socketBeforeTun = "unknown";
             socketAfterTun = "unknown";
             underlyingAdvertisement = "unset";
+            tunOrder = "unknown";
             keepalivePongs.set(0);
             keepalivePings.set(0);
             worker = new Thread(this::connectionLoop, "NetherVPN-worker");
@@ -160,6 +162,7 @@ public final class NetherVpnService extends VpnService {
                 .putString("socket_before_tun", socketBeforeTun)
                 .putString("socket_after_tun", socketAfterTun)
                 .putString("underlying_advertisement", underlyingAdvertisement)
+                .putString("tun_order", tunOrder)
                 .putLong("keepalive_pings", keepalivePings.get())
                 .putLong("keepalive_pongs", keepalivePongs.get())
                 .putLong("since_elapsed", connectedSinceElapsed)
@@ -311,6 +314,25 @@ public final class NetherVpnService extends VpnService {
                 + ":connected=" + udp.isConnected();
     }
 
+    private ParcelFileDescriptor createTun(VpnProfile profile, ClientSettings settings)
+            throws IOException {
+        step("tun", "Создание интерфейса Android VPN…");
+        Builder builder = new Builder().setSession("NetherVPN")
+                .setMtu(profile.mtu).addAddress(profile.localIp, profile.localPrefix)
+                .setBlocking(true);
+        if (settings.fullTunnel) {
+            builder.addRoute("0.0.0.0", 0).addDnsServer(settings.dns);
+            // Until IPv6 is supported, capture it and fail closed.
+            builder.addAddress("fd77:77::2", 128).addRoute("::", 0);
+        } else {
+            builder.addRoute(profile.peerIp, profile.peerPrefix);
+        }
+        ParcelFileDescriptor device = builder.establish();
+        if (device == null) throw new IOException("Android отказал в создании VPN TUN");
+        synchronized (lifecycleLock) { tun = device; }
+        return device;
+    }
+
     private void connectionLoop() {
         int delay = 1;
         while (running) {
@@ -326,19 +348,28 @@ public final class NetherVpnService extends VpnService {
                 step("endpoint", "Поиск адреса сервера…");
                 InetSocketAddress server = profile.endpoint();
                 if (server.isUnresolved()) throw new IOException("DNS: сервер не найден");
+                // Remember the upstream before VPN changes the default network.
+                Network upstream = upstreamNetwork();
+                NetworkCapabilities originalCaps = null;
+                try {
+                    ConnectivityManager cm = getSystemService(ConnectivityManager.class);
+                    if (cm != null && upstream != null)
+                        originalCaps = cm.getNetworkCapabilities(upstream);
+                } catch (SecurityException ignored) { }
+                boolean isCellular = originalCaps != null
+                        && originalCaps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR);
+                networkBeforeTun = networkSnapshot(upstream);
+                tunOrder = isCellular ? "tun_before_udp" : "udp_before_tun";
+                ParcelFileDescriptor device = null;
+                if (isCellular) {
+                    // On cellular, establish the VPN first, then open a fresh
+                    // protected upstream socket. This avoids carrying a UDP
+                    // socket across the Android routing transition.
+                    device = createTun(profile, settings);
+                }
                 step("udp", "Открытие UDP-сокета…");
                 DatagramSocket udp = new DatagramSocket();
                 synchronized (lifecycleLock) { socket = udp; }
-                // Explicitly bind BEFORE connecting and creating VPN TUN.
-                // A protected socket is necessary but not sufficient to retain
-                // the intended upstream physical network on all Android devices.
-                Network upstream = upstreamNetwork();
-                boolean isCellular = upstream != null
-                        && getSystemService(ConnectivityManager.class)
-                        .getNetworkCapabilities(upstream) != null
-                        && getSystemService(ConnectivityManager.class)
-                        .getNetworkCapabilities(upstream)
-                        .hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR);
                 boolean shouldBind = !(isCellular && !settings.bindMobileUdp);
                 udpMode = shouldBind ? "bound" : "protect_only";
                 if (upstream != null) {
@@ -357,31 +388,17 @@ public final class NetherVpnService extends VpnService {
                 Log.i("NetherVPN", "VPN UDP path: " + transportNetwork + ", mode=" + udpMode);
                 udp.connect(server);
                 networkBeforeTun = networkSnapshot(upstream);
-                socketBeforeTun = socketSnapshot(udp);
+                socketBeforeTun = isCellular ? "not-created-before-tun" : socketSnapshot(udp);
                 step("noise_ik", "Noise IK: аутентификация…");
                 secure = NoiseTransport.handshake(udp, server, profile);
                 step("encrypted_ping", "Проверка зашифрованного обмена…");
                 awaitPong(udp, secure);
                 if (!running) break;
 
-                step("tun", "Создание интерфейса Android VPN…");
-                Builder builder = new Builder()
-                        .setSession("NetherVPN")
-                        .setMtu(profile.mtu)
-                        .addAddress(profile.localIp, profile.localPrefix)
-                        .setBlocking(true);
-                if (settings.fullTunnel) {
-                    // All IPv4/DNS goes to the VPN, including public DNS resolvers.
-                    builder.addRoute("0.0.0.0", 0).addDnsServer(settings.dns);
-                    // Fail closed for IPv6 until server IPv6 forwarding exists:
-                    // catch the default IPv6 route, then discard IPv6 from TUN.
-                    builder.addAddress("fd77:77::2", 128).addRoute("::", 0);
-                } else {
-                    builder.addRoute(profile.peerIp, profile.peerPrefix);
+                if (device == null) {
+                    // Preserve the existing, already-working Wi-Fi ordering.
+                    device = createTun(profile, settings);
                 }
-                ParcelFileDescriptor device = builder.establish();
-                if (device == null) throw new IOException("Android отказал в создании VPN TUN");
-                synchronized (lifecycleLock) { tun = device; }
                 // Test whether cellular Android routing changes when
                 // underlying network advertisement is omitted.
                 boolean canAdvertise = upstream != null && udpMode.equals("bound")
