@@ -111,7 +111,8 @@ private data class VpnUi(
     val outboundDrops: Long = 0,
     val inboundDrops: Long = 0,
     val ipv6Drops: Long = 0,
-    val transportNetwork: String = "unselected"
+    val transportNetwork: String = "unselected",
+    val udpMode: String = "unselected"
 ) {
     val active get() = phase == "connected"
     val pending get() = phase == "connecting" || phase == "reconnecting"
@@ -124,6 +125,7 @@ private data class ProfileUi(
     val localIp: String = "",
     val full: Boolean = false,
     val dns: String = "1.1.1.1",
+    val bindMobileUdp: Boolean = true,
     val error: String = ""
 )
 
@@ -197,7 +199,7 @@ class MainActivity : ComponentActivity() {
                     onImport = { if (canEditProfile()) importPicker.launch(arrayOf("*/*")) },
                     onPaste = { if (canEditProfile()) modal = "paste" },
                     onDelete = { if (canEditProfile()) modal = "delete" },
-                    onSave = { full, dns -> saveOptions(full, dns) },
+                    onSave = { full, dns, bindMobile -> saveOptions(full, dns, bindMobile) },
                     onSystemVpn = { startActivity(Intent(Settings.ACTION_VPN_SETTINGS)) },
                     onCopyDiagnostics = { copyDiagnostics() }
                 )
@@ -254,7 +256,7 @@ class MainActivity : ComponentActivity() {
                 val conf = VpnProfile.parse(SecretStore.load(this))
                 val local = ClientSettings.load(this, conf)
                 ProfileUi(true, conf.endpointHost, conf.endpointPort, conf.localIp,
-                    local.fullTunnel, local.dns)
+                    local.fullTunnel, local.dns, local.bindMobileUdp)
             }
         } catch (e: Exception) {
             ProfileUi(error = e.message ?: "Не удалось прочитать профиль")
@@ -286,7 +288,8 @@ class MainActivity : ComponentActivity() {
             p.getLong("written_rx", 0), p.getLong("invalid_rx", 0),
             p.getLong("outbound_drops", 0), p.getLong("inbound_drops", 0),
             p.getLong("ipv6_drops", 0),
-            p.getString("transport_network", "unselected") ?: "unselected")
+            p.getString("transport_network", "unselected") ?: "unselected",
+            p.getString("udp_mode", "unselected") ?: "unselected")
     }
 
     private fun canEditProfile(): Boolean {
@@ -321,9 +324,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun saveOptions(full: Boolean, dns: String): Boolean {
+    private fun saveOptions(full: Boolean, dns: String, bindMobile: Boolean): Boolean {
         return try {
-            ClientSettings.save(this, full, dns)
+            ClientSettings.save(this, full, dns, bindMobile)
             reloadProfile()
             toast(if (vpn.phase == "disconnected") "Настройки сохранены"
                 else "Настройки сохранены — переподключите VPN")
@@ -350,6 +353,8 @@ class MainActivity : ComponentActivity() {
             appendLine("profile_imported=${profile.available}")
             appendLine("full_tunnel=${profile.full}")
             appendLine("udp_underlying_network=${vpn.transportNetwork}")
+            appendLine("udp_socket_mode=${vpn.udpMode}")
+            appendLine("cellular_bind_requested=${profile.bindMobileUdp}")
             // Never include private keys, server public keys, or raw .conf.
         }
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -382,7 +387,7 @@ private fun NetherScreen(
     onImport: () -> Unit,
     onPaste: () -> Unit,
     onDelete: () -> Unit,
-    onSave: (Boolean, String) -> Boolean,
+    onSave: (Boolean, String, Boolean) -> Boolean,
     onSystemVpn: () -> Unit,
     onCopyDiagnostics: () -> Unit
 ) {
@@ -594,11 +599,12 @@ private fun ProfilesPage(vpn: VpnUi, profile: ProfileUi,
 
 @Composable
 private fun SettingsPage(profile: ProfileUi, vpn: VpnUi,
-                         onSave: (Boolean, String) -> Boolean, onSystemVpn: () -> Unit,
+                         onSave: (Boolean, String, Boolean) -> Boolean, onSystemVpn: () -> Unit,
                          onCopyDiagnostics: () -> Unit) {
     Heading("Настройки", "Режим и DNS задаются на телефоне")
     var full by remember(profile.full, profile.host) { mutableStateOf(profile.full) }
     var dns by remember(profile.dns, profile.host) { mutableStateOf(profile.dns) }
+    var bindMobile by remember(profile.bindMobileUdp, profile.host) { mutableStateOf(profile.bindMobileUdp) }
     Card(shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Surface),
         modifier = Modifier.fillMaxWidth()) {
@@ -618,9 +624,24 @@ private fun SettingsPage(profile: ProfileUi, vpn: VpnUi,
             OutlinedTextField(value = dns, onValueChange = { dns = it },
                 modifier = Modifier.fillMaxWidth(), label = { Text("DNS (IPv4)") },
                 singleLine = true)
+            Spacer(Modifier.height(14.dp))
+            Text("МОБИЛЬНАЯ СЕТЬ · ТЕСТ UDP", color = Secondary, fontSize = 11.sp)
+            Row(verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().clickable { bindMobile = true }) {
+                RadioButton(selected = bindMobile, onClick = { bindMobile = true })
+                Text("A · Привязать UDP к мобильной сети", color = Pale, fontSize = 13.sp)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().clickable { bindMobile = false }) {
+                RadioButton(selected = !bindMobile, onClick = { bindMobile = false })
+                Text("B · Только protect() (эксперимент)", color = Pale, fontSize = 13.sp)
+            }
+            Text("На Wi-Fi используется прежний режим. После изменения переподключите VPN.",
+                color = Secondary, fontSize = 11.sp)
+
         }
     }
-    Button(onClick = { onSave(full, dns) }, modifier = Modifier.fillMaxWidth(),
+    Button(onClick = { onSave(full, dns, bindMobile) }, modifier = Modifier.fillMaxWidth(),
         colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Night)) {
         Text("Сохранить настройки", modifier = Modifier.padding(6.dp))
     }
