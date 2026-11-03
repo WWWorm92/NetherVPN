@@ -16,5 +16,5 @@ sudo install -o root -g root -m 0644 packaging/systemd/nethervpn-full-tunnel.ser
 sudo systemctl daemon-reload
 echo 'Installed nether-server, nether-admin, nethervpn-full-tunnel.'
 echo 'Restart: sudo systemctl restart nethervpn-server'
-echo 'Create Android profile: sudo nether-admin create -name phone -endpoint PUBLIC_IPV4:51830'
+echo 'Create Android or Linux client interactively: sudo nether-admin'
 echo 'Enable IPv4 NAT: sudo nethervpn-full-tunnel enable WAN_INTERFACE 10.77.0.0/24 nvpn0'
