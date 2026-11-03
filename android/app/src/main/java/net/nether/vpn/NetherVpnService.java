@@ -214,6 +214,8 @@ public final class NetherVpnService extends VpnService {
                     .putLong("outbound_drops", outboundDropped.get())
                     .putLong("inbound_drops", inboundDropped.get())
                     .putLong("ipv6_drops", ipv6Dropped.get())
+                    .putLong("keepalive_pings", keepalivePings.get())
+                    .putLong("keepalive_pongs", keepalivePongs.get())
                     .putLong("updated_elapsed", now).apply();
         }
     }
@@ -514,7 +516,7 @@ public final class NetherVpnService extends VpnService {
                 if (failure != null) throw new IOException("Ошибка отправки: " + concise(failure), failure);
                 long now = SystemClock.elapsedRealtime();
                 if (now - lastPong > 20000) {
-                    networkAfterTun = networkSnapshot(upstreamNetwork());
+                    networkAfterTun = networkSnapshot(upstream);
                     socketAfterTun = socketSnapshot(udp);
                     throw new IOException("Сервер не отвечает на keepalive");
                 }
