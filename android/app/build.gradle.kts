@@ -8,8 +8,8 @@ android {
         applicationId = "net.nether.vpn"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.7-alpha"
+        versionCode = 9
+        versionName = "0.8-alpha"
     }
 
     compileOptions {
