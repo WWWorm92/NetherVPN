@@ -95,7 +95,14 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(22), dp(18), dp(16), dp(12))
         }
-        heading.addView(text("◈  NetherVPN", 20f, white, true),
+        heading.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_nethervpn_foreground)
+            background = shape(raised, 11)
+            contentDescription = "NetherVPN"
+        }, LinearLayout.LayoutParams(dp(42), dp(42)).apply {
+            rightMargin = dp(11)
+        })
+        heading.addView(text("NetherVPN", 20f, white, true),
             LinearLayout.LayoutParams(0, -2, 1f))
         heading.addView(text("ANDROID  ·  BETA", 10f, muted, true))
         root.addView(heading)
