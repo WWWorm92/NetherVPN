@@ -49,6 +49,7 @@ func serveContinuous(ctx context.Context,c Config,identity noise.DHKey,authorize
  byIP:=make(map[netip.Addr]*activePeer)
  byRemote:=make(map[string]*activePeer)
  cache:=make(map[string]cachedInit)
+ lastRejectedLog:=time.Time{}
  outgoingErr:=make(chan error,1)
 
  go func(){
@@ -109,7 +110,15 @@ func serveContinuous(ctx context.Context,c Config,identity noise.DHKey,authorize
     if ok{selected=ip}
     return ok
    })
-   if e!=nil {continue}
+   if e!=nil {
+    // Avoid logging raw packets or keys; bounded warning allows distinguishing
+    // untrusted/invalid Noise initiations from UDP reachability failures.
+    if time.Since(lastRejectedLog)>5*time.Second {
+     log.Printf("server: rejected Noise initiation from %s: %v",addr,e)
+     lastRejectedLog=time.Now()
+    }
+    continue
+   }
    if _,e=conn.WriteToUDP(response,addr);e!=nil{log.Printf("server: handshake reply failed: %v",e);continue}
    mu.Lock()
    if previous:=byIP[selected];previous!=nil{
