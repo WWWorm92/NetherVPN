@@ -120,7 +120,16 @@ private data class VpnUi(
     val socketAfterTun: String = "unknown",
     val underlyingAdvertisement: String = "unset",
     val keepalivePings: Long = 0,
-    val keepalivePongs: Long = 0
+    val keepalivePongs: Long = 0,
+    val udpSendSuccess: Long = 0,
+    val udpSendErrors: Long = 0,
+    val udpRecvStarts: Long = 0,
+    val udpRecvTimeouts: Long = 0,
+    val udpRecvSuccess: Long = 0,
+    val tunPacketsSent: Long = 0,
+    val udpLastSendElapsed: Long = 0,
+    val udpLastRecvElapsed: Long = 0,
+    val udpLastError: String = "none"
 ) {
     val active get() = phase == "connected"
     val pending get() = phase == "connecting" || phase == "reconnecting"
@@ -305,7 +314,12 @@ class MainActivity : ComponentActivity() {
             p.getString("socket_before_tun", "unknown") ?: "unknown",
             p.getString("socket_after_tun", "unknown") ?: "unknown",
             p.getString("underlying_advertisement", "unset") ?: "unset",
-            p.getLong("keepalive_pings", 0), p.getLong("keepalive_pongs", 0))
+            p.getLong("keepalive_pings", 0), p.getLong("keepalive_pongs", 0),
+            p.getLong("udp_send_success", 0), p.getLong("udp_send_errors", 0),
+            p.getLong("udp_recv_starts", 0), p.getLong("udp_recv_timeouts", 0),
+            p.getLong("udp_recv_success", 0), p.getLong("tun_packets_sent", 0),
+            p.getLong("udp_last_send_elapsed", 0), p.getLong("udp_last_recv_elapsed", 0),
+            p.getString("udp_last_error", "none") ?: "none")
     }
 
     private fun canEditProfile(): Boolean {
@@ -379,6 +393,11 @@ class MainActivity : ComponentActivity() {
             appendLine("socket_before_tun=${vpn.socketBeforeTun}")
             appendLine("socket_after_tun=${vpn.socketAfterTun}")
             appendLine("keepalive_pings=${vpn.keepalivePings} keepalive_pongs=${vpn.keepalivePongs}")
+            appendLine("udp_send_success=${vpn.udpSendSuccess} udp_send_errors=${vpn.udpSendErrors}")
+            appendLine("tun_packets_sent=${vpn.tunPacketsSent}")
+            appendLine("udp_recv_starts=${vpn.udpRecvStarts} udp_recv_timeouts=${vpn.udpRecvTimeouts} udp_recv_success=${vpn.udpRecvSuccess}")
+            appendLine("udp_last_send_elapsed=${vpn.udpLastSendElapsed} udp_last_recv_elapsed=${vpn.udpLastRecvElapsed}")
+            appendLine("udp_last_error=${vpn.udpLastError}")
             // Never include private keys, server public keys, or raw .conf.
         }
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
