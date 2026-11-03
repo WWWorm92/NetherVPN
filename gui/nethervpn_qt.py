@@ -277,7 +277,7 @@ class Window(QMainWindow):
         BASE.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(BASE, 0o700)
         self.setWindowTitle("NetherVPN")
-        self.setWindowIcon(brand_icon()))
+        self.setWindowIcon(brand_icon())
         self.resize(1050, 750)
         self.setMinimumSize(850, 650)
         self.busy = False
