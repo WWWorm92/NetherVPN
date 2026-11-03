@@ -257,3 +257,12 @@ authentication and influence host VPN configuration. Only use this setting
 on a trusted personal machine. The installed helper must remain root-owned,
 not writable by ordinary users. The optional rule does not grant generic
 sudo, shell or systemctl commands.
+
+## Refined compact dashboard
+
+The current desktop home retains its familiar circular connect control and
+adds a glanceable receive/send/session-time row, keyboard-accessible rounded
+server selector, quiet mode shortcut and softly rounded navigation chips.
+The navy/ocean/mint visual language matches Android 0.7 without mirroring its
+mobile layout. Profiles, root helper, systemd, Full/Split and DNS behavior are
+unchanged. Launch from `python3 gui/nethervpn.py` after running the installer.
