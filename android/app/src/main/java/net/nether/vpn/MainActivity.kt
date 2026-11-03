@@ -129,7 +129,7 @@ class MainActivity : Activity() {
             elevation = dp(4).toFloat()
             contentDescription = "Подключить VPN"
             setOnClickListener {
-                if (phase == "disconnected" || phase == "error" || phase == "stale") connect() else disconnect()
+                if (phase == "disconnected") connect() else disconnect()
             }
         }
         main.addView(connectButton, LinearLayout.LayoutParams(dp(226), dp(226)))
@@ -397,8 +397,8 @@ class MainActivity : Activity() {
             "connected" -> "Подключено"
             "connecting" -> "Подключение…"
             "reconnecting" -> "Восстановление…"
-            "stale" -> "Повторить подключение"
-            "error" -> "Повторить подключение"
+            "stale" -> "Сбросить VPN"
+            "error" -> "Сбросить VPN"
             else -> "Подключить"
         }
         connectButton.setTextColor(if (connected) amber else white)
