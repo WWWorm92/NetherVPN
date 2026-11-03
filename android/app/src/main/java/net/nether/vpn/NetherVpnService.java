@@ -56,7 +56,9 @@ public final class NetherVpnService extends VpnService {
         // Android can start an Always-on VpnService without our CONNECT action.
         // Only start after VPN consent and a previously imported identity.
         if (intent != null && intent.getAction() != null &&
-                !CONNECT.equals(intent.getAction())) return START_NOT_STICKY;
+                !CONNECT.equals(intent.getAction()) &&
+                !VpnService.SERVICE_INTERFACE.equals(intent.getAction()))
+            return START_NOT_STICKY;
         if (!SecretStore.exists(this) || VpnService.prepare(this) != null)
             return START_NOT_STICKY;
         startForeground(NOTIFICATION_ID, notification("Подключение…"));
