@@ -65,6 +65,25 @@ func (c *Controller) SetLocalAddress(cidr string)error {
 func (c *Controller) run(cmd command)error{_,err:=c.Runner.Run(cmd.name,cmd.args...);return err}
 func (c *Controller) value(cmd command)(string,error){return c.Runner.Run(cmd.name,cmd.args...)}
 
+// missingFIBTable accepts only iproute2's absent-table response, optionally
+// followed by "Dump terminated". Other errors must abort before routing is
+// changed, so an unexpected failure cannot bypass conflict detection.
+func missingFIBTable(output string) bool {
+ lines:=strings.Split(strings.TrimSpace(output),"\n")
+ if len(lines)==0{return false}
+ first:=strings.TrimSpace(lines[0])
+ if first!="Error: ipv4: FIB table does not exist." &&
+    first!="Error: ipv6: FIB table does not exist." &&
+    first!="Error: FIB table does not exist." {
+  return false
+ }
+ for _,line:=range lines[1:] {
+  line=strings.TrimSpace(line)
+  if line!="" && line!="Dump terminated" {return false}
+ }
+ return true
+}
+
 func (c *Controller) checkFree()error{
  for _,family:=range []string{"-4","-6"} {
   rules,err:=c.value(ip(family,"rule","show"))
@@ -74,7 +93,14 @@ func (c *Controller) checkFree()error{
    if strings.HasPrefix(line,ExemptPriority+":")||strings.HasPrefix(line,VPNPriority+":"){return errExisting}
   }
   routes,err:=c.value(ip(family,"route","show","table",Table))
-  if err!=nil{return err}
+  if err!=nil{
+   // On Linux, querying a table that has never received a route can exit
+   // with status 2 ("FIB table does not exist"). This means the reserved
+   // table is FREE, not that policy routing is unsupported.
+   // Do not ignore unrelated errors such as EPERM or broken netlink calls.
+   if missingFIBTable(routes){continue}
+   return fmt.Errorf("routing: checking IPv4/IPv6 table %s: %w",Table,err)
+  }
   if strings.TrimSpace(routes)!=""{return errExisting}
  }
  return nil
