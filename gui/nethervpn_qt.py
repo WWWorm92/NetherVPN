@@ -324,7 +324,6 @@ class Window(QMainWindow):
         side.addSpacing(35)
         self.nav_buttons = []
         for title, page in (("⌂   Подключение", 0),
-                            ("▤   Серверы", 1),
                             ("◫   Профили", 1),
                             ("▥   Статистика", 2),
                             ("⚙   Настройки", 3),
@@ -427,7 +426,7 @@ class Window(QMainWindow):
         self.pages.addWidget(page)
 
     def _build_profiles(self):
-        page, layout = self._page("Серверы и профили", "У каждого устройства должен быть собственный ключ.")
+        page, layout = self._page("Профили", "У каждого устройства должен быть собственный ключ.")
         self.profile_list = QListWidget()
         self.profile_list.itemDoubleClicked.connect(lambda _item: self.select_profile())
         layout.addWidget(self.profile_list, 1)
