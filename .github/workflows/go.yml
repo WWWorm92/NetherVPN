@@ -23,6 +23,11 @@ jobs:
         run: |
           python3 -m py_compile gui/nethervpn.py gui/client_preferences.py
           python3 -m unittest discover -s tests -p 'test_*.py' -v
+          if command -v xvfb-run >/dev/null; then
+            xvfb-run -a python3 -m unittest discover -s tests -p 'test_gui_smoke.py' -v
+          else
+            echo 'Xvfb not installed: skipping desktop widget smoke test'
+          fi
           bash -n scripts/*.sh
       - name: Test
         run: go test -race ./...
