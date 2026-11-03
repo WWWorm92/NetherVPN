@@ -8,8 +8,8 @@ android {
         applicationId = "net.nether.vpn"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4-alpha"
+        versionCode = 5
+        versionName = "0.5-alpha"
     }
 
     compileOptions {
@@ -23,6 +23,7 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     // Established Noise Protocol reference implementation; no custom crypto primitives.
     implementation("org.signal.forks:noise-java:0.1.1")
 }
