@@ -18,14 +18,14 @@ BASE = Path.home() / ".config" / "nethervpn" / "profiles"
 APP_ROOT = Path(__file__).resolve().parent.parent
 CLIENT = APP_ROOT / "bin" / "nether-client"
 HELPER = "/usr/local/libexec/nether-desktop-helper"
-BG = "#101115"
-PANEL = "#1d1e24"
-TEXT = "#f6f7f9"
-MUTED = "#a1a4ae"
-ACCENT = "#ffb15c"
-RAISED = "#292b33"
-AMBER = "#ffc067"
-ERROR = "#ff7282"
+BG = "#101b29"
+PANEL = "#192b3e"
+TEXT = "#edf4fa"
+MUTED = "#9eb0c4"
+ACCENT = "#76d9c7"
+RAISED = "#233b52"
+AMBER = "#f5c47b"
+ERROR = "#ff879c"
 
 def profile_meta(path):
     cfg = configparser.ConfigParser(interpolation=None)
@@ -142,26 +142,24 @@ class App(tk.Tk):
         self.label(center, "ВАШЕ СОЕДИНЕНИЕ", 9, MUTED, "bold").pack(
             anchor="w", padx=12, pady=(23, 0))
 
-        # Wide, rounded connection capsule replaces the generic power circle.
-        self.connect_btn = tk.Canvas(center, height=226, bg=BG, bd=0,
-                                     highlightthickness=0, cursor="hand2",
-                                     takefocus=1)
-        self.connect_btn.pack(fill="x", expand=True, pady=(4, 4))
-        self._capsule_width = 340
-        self.outer_ring = self.rounded_rectangle(
-            self.connect_btn, 15, 47, 325, 183, 40,
-            fill=RAISED, outline="")
-        self.inner_ring = self.connect_btn.create_line(
-            53, 152, 287, 152, fill="#454650", width=1)
+        # Classic central power control restored; quieter two-layer geometry.
+        self.connect_btn = tk.Canvas(center, width=244, height=244, bg=BG,
+                                     bd=0, highlightthickness=0,
+                                     cursor="hand2", takefocus=1)
+        self.connect_btn.pack(expand=True, pady=(8, 5))
+        self.outer_ring = self.connect_btn.create_oval(
+            15, 15, 229, 229, outline=RAISED, width=9)
+        self.inner_ring = self.connect_btn.create_oval(
+            27, 27, 217, 217, outline="#38516a", width=1)
         self.power_text = self.connect_btn.create_text(
-            170, 103, text="Подключить", fill=TEXT,
-            font=("DejaVu Sans", 19, "bold"))
+            122, 114, text="Подключить", fill=TEXT,
+            font=("DejaVu Sans", 16, "bold"))
         self.power_subtext = self.connect_btn.create_text(
-            170, 130, text="Нажмите для подключения",
-            fill=MUTED, font=("DejaVu Sans", 9))
-        self._accent_line = self.connect_btn.create_line(
-            145, 65, 195, 65, fill=ACCENT, width=4, capstyle="round")
-        self.connect_btn.bind("<Configure>", self._resize_capsule)
+            122, 145, text="Защищённый канал", fill=MUTED,
+            font=("DejaVu Sans", 9))
+        self._accent_line = self.connect_btn.create_arc(
+            15, 15, 229, 229, start=66, extent=48,
+            style="arc", outline=ACCENT, width=9)
         self.connect_btn.bind("<Button-1>", lambda _e: self.toggle_connection())
         self.connect_btn.bind("<Return>", lambda _e: self.toggle_connection())
         self.connect_btn.bind("<space>", lambda _e: self.toggle_connection())
@@ -214,18 +212,6 @@ class App(tk.Tk):
             self.nav_action(nav, label, action, active).pack(
                 side="left", expand=True)
         self.log("Приложение готово. Настройки доступны отдельно.")
-
-    def _resize_capsule(self, event):
-        width = max(300, event.width)
-        center = width / 2
-        left, right = center - min(157, width / 2 - 14), center + min(157, width / 2 - 14)
-        self.connect_btn.coords(
-            self.outer_ring,
-            *self._rounded_points(left, 47, right, 183, 40))
-        self.connect_btn.coords(self.inner_ring, left + 37, 152, right - 37, 152)
-        self.connect_btn.coords(self.power_text, center, 103)
-        self.connect_btn.coords(self.power_subtext, center, 130)
-        self.connect_btn.coords(self._accent_line, center - 25, 65, center + 25, 65)
 
     @staticmethod
     def _rounded_points(x1, y1, x2, y2, r):
@@ -730,8 +716,8 @@ class App(tk.Tk):
             color = "#59606e"
             title = "Подключить"
             subtitle = "Нажмите для включения"
-        self.connect_btn.itemconfigure(self.outer_ring, fill=RAISED if not ready else "#263b39")
-        self.connect_btn.itemconfigure(self._accent_line, fill=color)
+        self.connect_btn.itemconfigure(self.outer_ring, outline="#315267" if ready else RAISED)
+        self.connect_btn.itemconfigure(self._accent_line, outline=color)
         self.connect_btn.itemconfigure(self.power_text, text=title, fill=TEXT)
         self.connect_btn.itemconfigure(self.power_subtext, text=subtitle, fill=MUTED)
         self.connect_btn.configure(state="disabled" if self.busy else "normal")
