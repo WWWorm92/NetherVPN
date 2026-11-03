@@ -15,13 +15,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Resolve dependencies
-        run: go mod tidy
-      - name: Dependency checksum audit
-        run: |
-          echo '===== BEGIN GO.SUM ====='
-          cat go.sum
-          echo '===== END GO.SUM ====='
+      - name: Verify tracked Go module metadata
+        run: go mod tidy -diff
       - name: Formatting report
         run: gofmt -l ./cmd ./internal
       - name: Test
