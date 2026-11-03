@@ -39,8 +39,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("NetherVPN")
-        self.geometry("410x690")
-        self.minsize(360, 580)
+        self.geometry("420x690")
+        self.minsize(380, 620)
         self.configure(bg=BG)
         # App switcher/titlebar icon matches the Linux SVG and Android launcher.
         self._app_icon = create_icon(self)
@@ -133,20 +133,20 @@ class App(tk.Tk):
         brand = tk.Frame(top, bg=BG)
         brand.pack(side="left")
         self.label(brand, "NetherVPN", 18, TEXT, "bold").pack(anchor="w")
-        self.label(brand, "Личный защищённый канал", 9, MUTED).pack(anchor="w")
+        self.label(brand, "Приватная сеть · Ваш сервер", 9, MUTED).pack(anchor="w")
         self.label(top, "LINUX", 9, ACCENT, "bold").pack(
             side="right", pady=(8, 0))
 
         center = tk.Frame(self, bg=BG)
         center.pack(fill="both", expand=True, padx=17)
-        self.label(center, "ВАШЕ СОЕДИНЕНИЕ", 9, MUTED, "bold").pack(
+        self.label(center, "ЗАЩИТА СОЕДИНЕНИЯ", 9, MUTED, "bold").pack(
             anchor="w", padx=12, pady=(23, 0))
 
         # Classic central power control restored; quieter two-layer geometry.
         self.connect_btn = tk.Canvas(center, width=244, height=244, bg=BG,
                                      bd=0, highlightthickness=0,
                                      cursor="hand2", takefocus=1)
-        self.connect_btn.pack(expand=True, pady=(8, 5))
+        self.connect_btn.pack(expand=True, pady=(4, 2))
         self.outer_ring = self.connect_btn.create_oval(
             15, 15, 229, 229, outline=RAISED, width=9)
         self.inner_ring = self.connect_btn.create_oval(
@@ -167,9 +167,20 @@ class App(tk.Tk):
         self.status_badge = tk.Label(
             center, textvariable=self.status_tag, bg=BG, fg=MUTED,
             font=("DejaVu Sans", 10, "bold"))
-        self.status_badge.pack(pady=(3, 6))
+        self.status_badge.pack(pady=(2, 4))
         tk.Label(center, textvariable=self.status_hint, bg=BG, fg=MUTED,
                  font=("DejaVu Sans", 9)).pack(pady=(0, 10))
+
+        # A useful, always-visible summary instead of an empty decorative area.
+        metrics = tk.Frame(self, bg=BG)
+        metrics.pack(fill="x", padx=24, pady=(5, 8))
+        for title, value in (("ПОЛУЧЕНО", self.rx), ("ОТПРАВЛЕНО", self.tx),
+                             ("ВРЕМЯ", self.timing)):
+            block = tk.Frame(metrics, bg=PANEL, padx=12, pady=10)
+            block.pack(side="left", fill="x", expand=True, padx=3)
+            self.label(block, title, 8, MUTED, "bold").pack(anchor="w")
+            tk.Label(block, textvariable=value, bg=PANEL, fg=TEXT,
+                     font=("DejaVu Sans", 11, "bold")).pack(anchor="w", pady=(5, 0))
 
         lower = tk.Frame(self, bg=BG)
         lower.pack(fill="x", padx=25, pady=(0, 12))
@@ -179,14 +190,18 @@ class App(tk.Tk):
             activebackground=BG, activeforeground=TEXT,
             font=("DejaVu Sans", 10), bd=0, relief="flat",
             cursor="hand2", pady=10, command=self.open_settings)
-        self.mode_row.pack(fill="x", pady=(0, 8))
+        self.mode_row.pack(fill="x", pady=(0, 5))
 
         server = tk.Canvas(lower, height=99, bg=BG, bd=0,
                            highlightthickness=0, cursor="hand2")
         server.pack(fill="x")
         server.bind("<Configure>", self._resize_server_card)
         server.bind("<Button-1>", lambda _e: self.open_profiles())
+        server.bind("<Return>", lambda _e: self.open_profiles())
+        server.bind("<space>", lambda _e: self.open_profiles())
+        server.configure(takefocus=1)
         self._server_card = server
+        self.profile_btn = server  # Profile-card action for accessibility and UI tests.
         self._server_bg = self.rounded_rectangle(
             server, 1, 1, 340, 98, 23, fill=PANEL, outline="")
         self._server_label = server.create_text(
@@ -230,7 +245,7 @@ class App(tk.Tk):
         self._server_card.itemconfigure(
             self._server_title, text=self.profile_title.get().replace("   ⌄", ""))
         self._server_card.itemconfigure(
-            self._server_endpoint, text=self.endpoint.get()[:49])
+            self._server_endpoint, text=self.endpoint.get()[:42])
 
     def toggle_connection(self):
         if self.busy:
@@ -718,6 +733,7 @@ class App(tk.Tk):
             subtitle = "Нажмите для включения"
         self.connect_btn.itemconfigure(self.outer_ring, outline="#315267" if ready else RAISED)
         self.connect_btn.itemconfigure(self._accent_line, outline=color)
+        self.connect_btn.itemconfigure(self.inner_ring, outline="#315e60" if ready else "#38516a")
         self.connect_btn.itemconfigure(self.power_text, text=title, fill=TEXT)
         self.connect_btn.itemconfigure(self.power_subtext, text=subtitle, fill=MUTED)
         self.connect_btn.configure(state="disabled" if self.busy else "normal")
