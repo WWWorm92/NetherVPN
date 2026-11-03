@@ -12,10 +12,12 @@ public final class ClientSettings {
     private static final String PREFS = "nether_local_options";
     public final boolean fullTunnel;
     public final String dns;
+    public final boolean bindMobileUdp;
 
-    private ClientSettings(boolean fullTunnel, String dns) {
+    private ClientSettings(boolean fullTunnel, String dns, boolean bindMobileUdp) {
         this.fullTunnel = fullTunnel;
         this.dns = dns;
+        this.bindMobileUdp = bindMobileUdp;
     }
 
     public static ClientSettings load(Context context, VpnProfile legacyProfile) {
@@ -28,20 +30,21 @@ public final class ClientSettings {
         String dns = prefs.contains("configured")
                 ? prefs.getString("dns", "1.1.1.1")
                 : legacyProfile.dns;
-        return new ClientSettings(full, dns);
+        return new ClientSettings(full, dns, prefs.getBoolean("bind_mobile_udp", true));
     }
 
-    public static ClientSettings save(Context context, boolean full, String rawDns)
+    public static ClientSettings save(Context context, boolean full, String rawDns, boolean bindMobileUdp)
             throws Exception {
         String dns = validateDNS(rawDns);
         boolean saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putBoolean("full", full)
+                .putBoolean("bind_mobile_udp", bindMobileUdp)
                 .putString("dns", dns)
                 .putBoolean("configured", true)
                 .commit();
         if (!saved) throw new IllegalStateException("Не удалось сохранить настройки");
-        return new ClientSettings(full, dns);
+        return new ClientSettings(full, dns, bindMobileUdp);
     }
 
     public static String validateDNS(String raw) throws Exception {
