@@ -62,6 +62,15 @@ public final class NetherVpnService extends VpnService {
     private volatile String tunOrder = "unknown";
     private final AtomicLong keepalivePongs = new AtomicLong();
     private final AtomicLong keepalivePings = new AtomicLong();
+    private final AtomicLong udpSendSuccess = new AtomicLong();
+    private final AtomicLong udpSendErrors = new AtomicLong();
+    private final AtomicLong udpReceiveTimeouts = new AtomicLong();
+    private final AtomicLong udpReceiveStarts = new AtomicLong();
+    private final AtomicLong udpReceiveSuccess = new AtomicLong();
+    private final AtomicLong tunPacketsSent = new AtomicLong();
+    private volatile long lastUdpSendElapsed = 0;
+    private volatile long lastUdpReceiveElapsed = 0;
+    private volatile String udpLastError = "none";
     private volatile boolean running;
     private Thread worker;
     private DatagramSocket socket;
@@ -125,6 +134,15 @@ public final class NetherVpnService extends VpnService {
             tunOrder = "unknown";
             keepalivePongs.set(0);
             keepalivePings.set(0);
+            udpSendSuccess.set(0);
+            udpSendErrors.set(0);
+            udpReceiveTimeouts.set(0);
+            udpReceiveStarts.set(0);
+            udpReceiveSuccess.set(0);
+            tunPacketsSent.set(0);
+            lastUdpSendElapsed = 0;
+            lastUdpReceiveElapsed = 0;
+            udpLastError = "none";
             worker = new Thread(this::connectionLoop, "NetherVPN-worker");
             worker.start();
         }
@@ -165,6 +183,16 @@ public final class NetherVpnService extends VpnService {
                 .putString("tun_order", tunOrder)
                 .putLong("keepalive_pings", keepalivePings.get())
                 .putLong("keepalive_pongs", keepalivePongs.get())
+                .putLong("udp_send_success", udpSendSuccess.get())
+                .putLong("udp_send_errors", udpSendErrors.get())
+                .putLong("udp_recv_starts", udpReceiveStarts.get())
+                .putLong("udp_recv_timeouts", udpReceiveTimeouts.get())
+                .putLong("udp_recv_success", udpReceiveSuccess.get())
+                .putLong("tun_packets_sent", tunPacketsSent.get())
+                .putLong("udp_last_send_elapsed", lastUdpSendElapsed)
+                .putLong("udp_last_recv_elapsed", lastUdpReceiveElapsed)
+                .putString("udp_last_error", udpLastError)
+
                 .putLong("since_elapsed", connectedSinceElapsed)
                 .putLong("updated_elapsed", SystemClock.elapsedRealtime())
                 .putLong("tx", bytesUp.get())
@@ -219,6 +247,15 @@ public final class NetherVpnService extends VpnService {
                     .putLong("ipv6_drops", ipv6Dropped.get())
                     .putLong("keepalive_pings", keepalivePings.get())
                     .putLong("keepalive_pongs", keepalivePongs.get())
+                    .putLong("udp_send_success", udpSendSuccess.get())
+                    .putLong("udp_send_errors", udpSendErrors.get())
+                    .putLong("udp_recv_starts", udpReceiveStarts.get())
+                    .putLong("udp_recv_timeouts", udpReceiveTimeouts.get())
+                    .putLong("udp_recv_success", udpReceiveSuccess.get())
+                    .putLong("tun_packets_sent", tunPacketsSent.get())
+                    .putLong("udp_last_send_elapsed", lastUdpSendElapsed)
+                    .putLong("udp_last_recv_elapsed", lastUdpReceiveElapsed)
+                    .putString("udp_last_error", udpLastError)
                     .putLong("updated_elapsed", now).apply();
         }
     }
@@ -452,8 +489,16 @@ public final class NetherVpnService extends VpnService {
         return message.length() > 110 ? message.substring(0, 110) : message;
     }
 
-    private static void send(DatagramSocket socket, byte[] data) throws IOException {
-        socket.send(new DatagramPacket(data, data.length));
+    private void send(DatagramSocket socket, byte[] data) throws IOException {
+        try {
+            socket.send(new DatagramPacket(data, data.length));
+            udpSendSuccess.incrementAndGet();
+            lastUdpSendElapsed = SystemClock.elapsedRealtime();
+        } catch (IOException e) {
+            udpSendErrors.incrementAndGet();
+            udpLastError = concise(e);
+            throw e;
+        }
     }
 
     private void awaitPong(DatagramSocket udp, NoiseTransport secure) throws Exception {
@@ -514,6 +559,7 @@ public final class NetherVpnService extends VpnService {
                         continue;
                     }
                     send(udp, secure.seal(data, count));
+                    tunPacketsSent.incrementAndGet();
                     bytesUp.addAndGet(count);
                     updateStats();
                 }
@@ -544,7 +590,10 @@ public final class NetherVpnService extends VpnService {
                 try {
                     udp.setSoTimeout(500);
                     DatagramPacket incoming = new DatagramPacket(buffer, buffer.length);
+                    udpReceiveStarts.incrementAndGet();
                     udp.receive(incoming);
+                    udpReceiveSuccess.incrementAndGet();
+                    lastUdpReceiveElapsed = SystemClock.elapsedRealtime();
                     inboundWire.incrementAndGet();
                     byte[] plain = secure.open(buffer, incoming.getLength());
                     if (plain == null) {
@@ -571,7 +620,10 @@ public final class NetherVpnService extends VpnService {
                     inboundWritten.incrementAndGet();
                     bytesDown.addAndGet(plain.length);
                     updateStats();
-                } catch (java.net.SocketTimeoutException ignored) { }
+                } catch (java.net.SocketTimeoutException ignored) {
+                    udpReceiveTimeouts.incrementAndGet();
+                    updateStats();
+                }
             }
         } finally {
             try { device.close(); } catch (IOException ignored) { }
