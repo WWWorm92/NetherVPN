@@ -155,3 +155,43 @@ The workflow `.github/workflows/android.yml` builds and publishes debug-signed
 test APKs from `main`. Do not uninstall an existing debug-signed application
 without securely backing up its unique client profile first, since signing
 certificates can change between CI builds.
+
+## Android 0.9.2 Alpha: connection stage diagnostics
+
+After a failed connection open **Настройки → Диагностика** and tap the
+diagnostics card. It copies only the connection phase, transport stage,
+last error and aggregate counters — **never private keys or raw .conf files**.
+
+Stages identify where the connection stops:
+- `profile`: importing/decrypting/verifying the per-device configuration;
+- `endpoint`: resolving the server address;
+- `udp`: opening and protecting the socket;
+- `noise_ik`: authenticated Noise IK handshake (server reachable / key accepted);
+- `encrypted_ping`: first encrypted UDP PING/PONG and cipher compatibility;
+- `tun`: creating Android VpnService TUN / routing;
+- `connected`: encrypted exchange and TUN established (not proof of Internet egress);
+- `retry`: reconnecting after failure.
+
+On a USB-connected phone with adb, collect logcat while tapping Connect:
+
+```bash
+adb logcat -c
+adb logcat -v time -s NetherVPN:I AndroidRuntime:E
+```
+
+On the **gateway**, in another terminal:
+
+```bash
+sudo journalctl -u nethervpn-server -f --no-pager
+```
+
+If the server reports `authenticated client 10.77.0.x`, Noise IK accepted
+that identity. A rejection warning suggests a key/config/protocol mismatch.
+No packets in the server journal is not proof of reachability failure:
+capture UDP with tcpdump or check the server's listen interface/port.
+The server logging changes require a **new server build and restart**;
+a source-code update alone does not change the running service.
+
+VPN debug report and Android/server log excerpts can identify the failing
+step without sharing secrets. Do not paste the contents of a .conf file or
+a private key into issue reports.
