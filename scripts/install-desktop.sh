@@ -12,6 +12,8 @@ fi
 cd "$ROOT"
 go build -o bin/nether-client ./cmd/nether-client
 sudo install -o root -g root -m 0755 bin/nether-client /usr/local/bin/nether-client
+sudo install -d -m 0755 /usr/local/libexec
+sudo install -m 0755 scripts/nether-desktop-helper.py /usr/local/libexec/nether-desktop-helper
 sudo install -d -o root -g root -m 0700 /etc/nethervpn
 sudo install -o root -g root -m 0644 packaging/systemd/nethervpn-client.service /etc/systemd/system/nethervpn-client.service
 sudo systemctl daemon-reload
