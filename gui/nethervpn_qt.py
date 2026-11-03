@@ -9,7 +9,7 @@ import tempfile
 import time
 import shutil
 
-from PySide6.QtCore import Qt, QTimer, QThread, Signal, QRectF, QEasingCurve, QPropertyAnimation, Property
+from PySide6.QtCore import Qt, QTimer, QThread, Signal, QRectF, QPointF, QEasingCurve, QPropertyAnimation, Property
 from PySide6.QtGui import QColor, QPainter, QPen, QFont, QIcon, QRadialGradient
 from PySide6.QtWidgets import (
     QApplication, QWidget, QMainWindow, QLabel, QPushButton, QVBoxLayout,
@@ -145,7 +145,7 @@ class Ring(QWidget):
         p.setPen(QPen(self.color, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         glyph = QRectF(center.x()-19, center.y()-37, 38, 38)
         p.drawArc(glyph, 130*16, 280*16)
-        p.drawLine( center.x(), center.y()-44, center.x(), center.y()-22 )
+        p.drawLine(QPointF(center.x(), center.y()-44),\n                   QPointF(center.x(), center.y()-22))
         p.setPen(QColor(TEXT))
         font = QFont("DejaVu Sans", 12)
         font.setBold(True)
@@ -183,7 +183,7 @@ class Window(QMainWindow):
         BASE.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(BASE, 0o700)
         self.setWindowTitle("NetherVPN")
-        icon_png = ROOT / "assets" / "nethervpn.png"\n        self.setWindowIcon(QIcon(str(icon_png if icon_png.is_file() else ROOT/"assets/nethervpn.svg"))))
+        icon_png = Path.home() / ".local/share/icons/hicolor/256x256/apps/nethervpn.png"\n        self.setWindowIcon(QIcon(str(icon_png if icon_png.is_file() else ROOT/"assets/nethervpn.svg"))))
         self.resize(1050, 750)
         self.setMinimumSize(850, 650)
         self.busy = False
