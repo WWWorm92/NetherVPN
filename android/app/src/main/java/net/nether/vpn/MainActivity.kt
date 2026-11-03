@@ -80,6 +80,12 @@ class MainActivity : Activity() {
         intArrayOf(color, Color.rgb(33, 98, 107))
     ).apply { cornerRadius = dp(30).toFloat() }
 
+    private fun powerRing(color: Int) = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(Color.rgb(17, 39, 55))
+        setStroke(dp(4), color)
+    }
+
     private fun softCard(color: Int = card, radius: Int = 28) =
         shape(color, radius)
 
@@ -128,37 +134,37 @@ class MainActivity : Activity() {
 
         val hero = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = softCard(card, 32)
-            setPadding(dp(22), dp(24), dp(22), dp(23))
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(8), dp(5), dp(8), dp(10))
         }
         badge = text("●  НЕ ПОДКЛЮЧЕНО", 12f, muted, true)
-        hero.addView(badge)
-        space(hero, 12)
-        status = text("VPN выключен", 27f, white, true)
-        hero.addView(status)
-        space(hero, 8)
-        detail = text("Подключитесь к своему серверу", 13f, muted).apply {
+        status = text("VPN выключен", 18f, white, true)
+        detail = text("Подключитесь к своему серверу", 12f, muted).apply {
+            gravity = Gravity.CENTER
             maxLines = 3
         }
-        hero.addView(detail)
-        space(hero, 24)
+        // Connection ring follows the approved visual concept; the ring's
+        // caption comes from VpnService state, never an assumed handshake.
         connectButton = Button(this).apply {
             isAllCaps = false
-            text = "Подключить"
-            textSize = 17f
+            textSize = 18f
             setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-            setTextColor(navy)
-            background = connectionSurface(mint)
+            setTextColor(white)
+            background = powerRing(muted)
             backgroundTintList = null
-            elevation = dp(2).toFloat()
-            minHeight = dp(62)
-            minimumHeight = dp(62)
+            elevation = dp(3).toFloat()
             contentDescription = "Управление VPN-соединением"
             setOnClickListener {
                 if (phase == "disconnected") connect() else disconnect()
             }
         }
-        hero.addView(connectButton, LinearLayout.LayoutParams(-1, dp(62)))
+        hero.addView(connectButton, LinearLayout.LayoutParams(dp(205), dp(205)))
+        space(hero, 12)
+        hero.addView(badge)
+        space(hero, 7)
+        hero.addView(status)
+        space(hero, 5)
+        hero.addView(detail)
         content.addView(hero)
         space(content, 17)
 
@@ -230,24 +236,36 @@ class MainActivity : Activity() {
         content.addView(modeTitle, LinearLayout.LayoutParams(-1, -2))
         space(content, 18)
 
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        fun secondary(label: String, action: () -> Unit) = Button(this).apply {
-            text = label
-            isAllCaps = false
-            textSize = 13f
-            setTextColor(white)
-            background = softCard(raised, 22)
-            backgroundTintList = null
-            minHeight = dp(52)
-            minimumHeight = dp(52)
-            setOnClickListener { action() }
+        // Genuine navigation actions, not inert decorative tabs.
+        val navigation = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            background = softCard(card, 25)
+            setPadding(dp(5), dp(6), dp(5), dp(6))
         }
-        actions.addView(secondary("⚙  Настройки") { settingsDialog() },
-            LinearLayout.LayoutParams(0, dp(52), 1f).apply { rightMargin = dp(7) })
-        actions.addView(secondary("＋  Импорт") { importDocument() },
-            LinearLayout.LayoutParams(0, dp(52), 1f).apply { leftMargin = dp(7) })
-        content.addView(actions)
-        space(content, 16)
+        fun tab(caption: String, selected: Boolean = false, action: () -> Unit) =
+            TextView(this).apply {
+                text = caption
+                gravity = Gravity.CENTER
+                textSize = 11f
+                setTextColor(if (selected) mint else muted)
+                background = if (selected) softCard(raised, 18) else softCard(card, 18)
+                setPadding(dp(4), dp(14), dp(4), dp(14))
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { action() }
+            }
+        navigation.addView(tab("⌂  Главная", true) {
+            root.smoothScrollTo(0, 0)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        navigation.addView(tab("▤  Серверы") { profileDialog() },
+            LinearLayout.LayoutParams(0, -2, 1f))
+        navigation.addView(tab("▣  Профили") { profileDialog() },
+            LinearLayout.LayoutParams(0, -2, 1f))
+        navigation.addView(tab("⚙  Настройки") { settingsDialog() },
+            LinearLayout.LayoutParams(0, -2, 1f))
+        content.addView(navigation)
+        space(content, 14)
         content.addView(text("Noise IK · IPv4 · Экспериментальный VPN",
             10f, muted).apply { gravity = Gravity.CENTER },
             LinearLayout.LayoutParams(-1, -2))
@@ -432,10 +450,10 @@ class MainActivity : Activity() {
             "error" -> "Сбросить VPN"
             else -> "Подключить"
         }
-        connectButton.setTextColor(if (connected || pending || phase == "error") navy else white)
+        connectButton.setTextColor(white)
         if (renderedPhase != phase) {
-            connectButton.background = connectionSurface(
-                if (connected) mint else if (pending) amber else if (phase == "error") red else raised)
+            connectButton.background = powerRing(
+                if (connected) mint else if (pending) amber else if (phase == "error") red else muted)
             renderedPhase = phase
         }
         connectButton.contentDescription = if (phase == "disconnected")
