@@ -110,7 +110,8 @@ private data class VpnUi(
     val invalidRx: Long = 0,
     val outboundDrops: Long = 0,
     val inboundDrops: Long = 0,
-    val ipv6Drops: Long = 0
+    val ipv6Drops: Long = 0,
+    val transportNetwork: String = "unselected"
 ) {
     val active get() = phase == "connected"
     val pending get() = phase == "connecting" || phase == "reconnecting"
@@ -284,7 +285,8 @@ class MainActivity : ComponentActivity() {
             p.getLong("wire_rx", 0), p.getLong("decrypted_rx", 0),
             p.getLong("written_rx", 0), p.getLong("invalid_rx", 0),
             p.getLong("outbound_drops", 0), p.getLong("inbound_drops", 0),
-            p.getLong("ipv6_drops", 0))
+            p.getLong("ipv6_drops", 0),
+            p.getString("transport_network", "unselected") ?: "unselected")
     }
 
     private fun canEditProfile(): Boolean {
@@ -347,6 +349,7 @@ class MainActivity : ComponentActivity() {
             appendLine("drops_ipv6=${vpn.ipv6Drops}")
             appendLine("profile_imported=${profile.available}")
             appendLine("full_tunnel=${profile.full}")
+            appendLine("udp_underlying_network=${vpn.transportNetwork}")
             // Never include private keys, server public keys, or raw .conf.
         }
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
