@@ -52,6 +52,7 @@ public final class NetherVpnService extends VpnService {
     private volatile String stage = "idle";
     private volatile String failedStage = "";
     private volatile String transportNetwork = "unselected";
+    private volatile String udpMode = "unselected";
     private volatile boolean running;
     private Thread worker;
     private DatagramSocket socket;
@@ -106,6 +107,7 @@ public final class NetherVpnService extends VpnService {
             failedStage = "";
             stage = "start";
             transportNetwork = "unselected";
+            udpMode = "unselected";
             worker = new Thread(this::connectionLoop, "NetherVPN-worker");
             worker.start();
         }
@@ -137,6 +139,7 @@ public final class NetherVpnService extends VpnService {
                 .putString("stage", stage)
                 .putString("failed_stage", failedStage)
                 .putString("transport_network", transportNetwork)
+                .putString("udp_mode", udpMode)
                 .putLong("since_elapsed", connectedSinceElapsed)
                 .putLong("updated_elapsed", SystemClock.elapsedRealtime())
                 .putLong("tx", bytesUp.get())
@@ -264,19 +267,28 @@ public final class NetherVpnService extends VpnService {
                 // A protected socket is necessary but not sufficient to retain
                 // the intended upstream physical network on all Android devices.
                 Network upstream = upstreamNetwork();
+                boolean isCellular = upstream != null
+                        && getSystemService(ConnectivityManager.class)
+                        .getNetworkCapabilities(upstream) != null
+                        && getSystemService(ConnectivityManager.class)
+                        .getNetworkCapabilities(upstream)
+                        .hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR);
+                boolean shouldBind = !(isCellular && !settings.bindMobileUdp);
+                udpMode = shouldBind ? "bound" : "protect_only";
                 if (upstream != null) {
-                    try {
-                        upstream.bindSocket(udp);
-                        transportNetwork = transportName(getSystemService(ConnectivityManager.class)
-                                .getNetworkCapabilities(upstream));
-                    } catch (SecurityException | IOException error) {
-                        // Optional binding failed; keep mandatory VPN protection.
-                        Log.w("NetherVPN", "Physical network binding unavailable; using protect-only", error);
-                        transportNetwork = "protected-only:bind-unavailable";
+                    transportNetwork = transportName(getSystemService(ConnectivityManager.class)
+                            .getNetworkCapabilities(upstream));
+                    if (shouldBind) {
+                        try {
+                            upstream.bindSocket(udp);
+                        } catch (SecurityException | IOException error) {
+                            Log.w("NetherVPN", "Physical network binding unavailable; using protect-only", error);
+                            udpMode = "protect_only_fallback";
+                        }
                     }
                 }
                 if (!protect(udp)) throw new IOException("Не удалось исключить UDP-сокет из VPN");
-                Log.i("NetherVPN", "VPN UDP path: " + transportNetwork);
+                Log.i("NetherVPN", "VPN UDP path: " + transportNetwork + ", mode=" + udpMode);
                 udp.connect(server);
                 step("noise_ik", "Noise IK: аутентификация…");
                 secure = NoiseTransport.handshake(udp, server, profile);
@@ -303,7 +315,7 @@ public final class NetherVpnService extends VpnService {
                 if (device == null) throw new IOException("Android отказал в создании VPN TUN");
                 synchronized (lifecycleLock) { tun = device; }
                 // Advertise the physical transport explicitly to Android.
-                if (upstream != null && (transportNetwork.equals("wifi")
+                if (upstream != null && udpMode.equals("bound") && (transportNetwork.equals("wifi")
                         || transportNetwork.equals("cellular")
                         || transportNetwork.equals("ethernet"))) {
                     try { setUnderlyingNetworks(new Network[] { upstream }); }
