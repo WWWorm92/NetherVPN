@@ -187,7 +187,7 @@ public final class NetherVpnService extends VpnService {
                 delay = Math.min(delay * 2, 8);
             }
         }
-        publish("Не подключено");
+        publish("Не подключено", "disconnected");
     }
 
     private static String concise(Throwable error) {
@@ -228,7 +228,11 @@ public final class NetherVpnService extends VpnService {
                 while (running && !Thread.currentThread().isInterrupted()) {
                     int count = input.read(data);
                     if (count < 0) return;
-                    if (count == 0 || count > profile.mtu) continue;
+                    if (count == 0) continue;
+                    if (count > profile.mtu) {
+                        noteDrop(PacketPolicy.MALFORMED, count);
+                        continue;
+                    }
                     // IPv6 traffic is captured but deliberately not transmitted:
                     // gateway currently supports only routed/NATed IPv4.
                     int verdict = PacketPolicy.outbound(data, count, profile.localBytes);
