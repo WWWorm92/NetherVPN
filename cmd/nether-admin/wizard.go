@@ -136,7 +136,7 @@ func peersNameValid(name string)bool{
 }
 
 func askRestart(in io.Reader,out io.Writer){
- reader:=bufio.NewReader(in)
+ reader:=sharedReader(in)
  fmt.Fprintln(out,"Важно: применение нового клиента кратковременно отключит действующие VPN-сессии.")
  answer,e:=ask(reader,out,"Перезапустить службу nethervpn-server сейчас? да/нет","да")
  if e!=nil{fmt.Fprintln(out,"Перезапуск не выполнен. Вручную: sudo systemctl restart nethervpn-server");return}
