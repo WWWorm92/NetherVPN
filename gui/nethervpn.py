@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """NetherVPN Linux desktop client, backed by a privileged systemd service."""
 import configparser
+import ipaddress
 import threading
 import os
 from pathlib import Path
@@ -51,6 +52,9 @@ class App(tk.Tk):
         self.state = tk.StringVar(value="Не подключено")
         self.endpoint = tk.StringVar(value="Выберите профиль")
         self.mode_text = tk.StringVar(value="Выберите профиль")
+        self.mode_var = tk.StringVar(value="split")
+        self.dns_var = tk.StringVar(value="1.1.1.1")
+        self.autostart_var = tk.BooleanVar(value=False)
         self.timing = tk.StringVar(value="—")
         self.tx = tk.StringVar(value="—")
         self.rx = tk.StringVar(value="—")
@@ -101,6 +105,31 @@ class App(tk.Tk):
                  font=("DejaVu Sans", 10), anchor="w").pack(fill="x", padx=24, pady=(7, 3))
         tk.Label(right, textvariable=self.mode_text, bg=PANEL, fg=ACCENT,
                  font=("DejaVu Sans", 10, "bold"), anchor="w").pack(fill="x", padx=24, pady=(0, 12))
+        settings_panel = tk.Frame(right, bg=PANEL)
+        settings_panel.pack(fill="x", padx=24, pady=(4, 12))
+        self.label(settings_panel, "РЕЖИМ ПОДКЛЮЧЕНИЯ", 10, MUTED, "bold").pack(anchor="w")
+        for value, caption in (("full", "Весь IPv4 через VPN"),
+                               ("split", "Только адрес VPN-сервера")):
+            tk.Radiobutton(
+                settings_panel, text=caption, variable=self.mode_var, value=value,
+                bg=PANEL, fg=TEXT, selectcolor=BG, activebackground=PANEL,
+                activeforeground=TEXT, font=("DejaVu Sans", 10),
+                command=self.refresh_mode_label,
+            ).pack(anchor="w")
+        self.label(settings_panel, "DNS для полного туннеля", 10, MUTED).pack(anchor="w")
+        tk.Entry(settings_panel, textvariable=self.dns_var, bg="#304157",
+                 fg=TEXT, insertbackground=TEXT, relief="flat",
+                 font=("DejaVu Sans Mono", 11)).pack(fill="x", pady=(2, 8))
+        tk.Checkbutton(
+            settings_panel, text="Подключаться при запуске Linux (systemd)",
+            variable=self.autostart_var, bg=PANEL, fg=TEXT,
+            selectcolor=BG, activebackground=PANEL,
+            activeforeground=TEXT,
+        ).pack(anchor="w")
+        self.button(settings_panel, "Сохранить настройки", self.save_settings).pack(anchor="w", pady=(4, 4))
+        self.label(settings_panel, "В Full Tunnel блокировка утечек при переподключении встроена.\n"
+                   "Для аварийного выключения: sudo systemctl stop nethervpn-client",
+                   9, MUTED).pack(anchor="w")
         actions = tk.Frame(right, bg=PANEL)
         actions.pack(anchor="w", padx=24)
         self.connect_btn = self.button(actions, "Подключить", self.connect, True)
@@ -147,21 +176,91 @@ class App(tk.Tk):
         sel = self.listbox.curselection()
         return self.items[sel[0]] if sel and sel[0] < len(self.items) else None
 
+    @staticmethod
+    def preferences_path(path):
+        return BASE / (path.stem + ".prefs")
+
+    def load_choices(self, path):
+        _, _, legacy_full, legacy_dns = profile_meta(path)
+        settings = configparser.ConfigParser(interpolation=None)
+        pref = self.preferences_path(path)
+        if pref.is_symlink():
+            raise ValueError("Символическая ссылка настроек запрещена")
+        if pref.exists():
+            settings.read(pref, encoding="utf-8")
+        mode = settings.get("Client", "Mode",
+                            fallback="full" if legacy_full else "split")
+        dns = settings.get("Client", "DNS", fallback=legacy_dns)
+        auto = settings.getboolean("Client", "AutoConnect", fallback=False)
+        if mode not in ("full", "split"):
+            raise ValueError("Недопустимый режим в локальных настройках")
+        ipaddress.IPv4Address(dns)
+        return mode, dns, auto
+
+    def refresh_mode_label(self):
+        if self.mode_var.get() == "full":
+            self.mode_text.set("Весь IPv4 через VPN · DNS " + self.dns_var.get()
+                               + " · IPv6 блокируется")
+        else:
+            self.mode_text.set("Только VPN-сервер · интернет без изменений")
+
     def on_select(self, _event=None):
         path = self.selected()
         if path:
             self.selected_name = path.name
             try:
-                peer, _, full, dns = profile_meta(path)
+                peer, _, _, _ = profile_meta(path)
+                mode, dns, auto = self.load_choices(path)
                 self.endpoint.set(peer)
-                self.mode_text.set(f"Весь IPv4 через VPN · DNS {dns} · IPv6 заблокирован" if full
-                                   else "Только VPN-сервер · маршруты интернета не меняются")
+                self.mode_var.set(mode)
+                self.dns_var.set(dns)
+                self.autostart_var.set(auto)
+                self.refresh_mode_label()
             except (OSError, ValueError, configparser.Error) as exc:
                 self.endpoint.set("Ошибка конфигурации")
                 self.log(str(exc))
         elif not self.active:
             self.endpoint.set("Выберите профиль")
             self.mode_text.set("Выберите профиль")
+
+    def save_settings(self, notify=True):
+        profile = self.selected()
+        if not profile:
+            if notify:
+                messagebox.showinfo("NetherVPN", "Сначала выберите профиль")
+            return None
+        try:
+            mode = self.mode_var.get()
+            if mode not in ("full", "split"):
+                raise ValueError("Выберите режим Full или Split")
+            dns = str(ipaddress.IPv4Address(self.dns_var.get().strip()))
+            if dns == "0.0.0.0":
+                raise ValueError("Нельзя использовать DNS 0.0.0.0")
+            pref = self.preferences_path(profile)
+            if pref.is_symlink():
+                raise ValueError("Нельзя перезаписать символическую ссылку")
+            text = "[Client]\\nMode = {}\\nDNS = {}\\nAutoConnect = {}\\n".format(
+                mode, dns, "true" if self.autostart_var.get() else "false")
+            fd, tmp = tempfile.mkstemp(prefix=".prefs-", dir=str(BASE))
+            try:
+                os.fchmod(fd, 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(text)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp, pref)
+            finally:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+            self.refresh_mode_label()
+            if notify:
+                self.log("Настройки сохранены: " + mode + "; DNS " + dns)
+                messagebox.showinfo("NetherVPN", "Настройки сохраняются отдельно от .conf.\\n"
+                                    "Чтобы применить их, переподключите VPN.")
+            return pref
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Настройки", str(exc))
+            return None
 
     def import_profile(self):
         filename = filedialog.askopenfilename(filetypes=[("NetherVPN конфигурация", "*.conf")])
@@ -200,6 +299,7 @@ class App(tk.Tk):
             return
         if messagebox.askyesno("Удалить профиль", "Удалить " + path.stem + "?"):
             path.unlink()
+            self.preferences_path(path).unlink(missing_ok=True)
             self.selected_name = None
             self.refresh()
             self.log("Профиль удалён")
@@ -239,31 +339,50 @@ class App(tk.Tk):
         if not shutil.which("pkexec"):
             messagebox.showerror("NetherVPN", "Не найден pkexec")
             return
-        # systemd exclusively owns the TUN, so closing GUI cannot strand it.
-        try:
-            _, _, full, _ = profile_meta(profile)
-            if full and not messagebox.askyesno(
-                "Полный VPN-туннель",
-                "Весь IPv4-трафик компьютера и DNS пойдут через NetherVPN. "
-                "IPv6 будет заблокирован; при проблеме отключите VPN через эту кнопку "
-                "или: sudo systemctl stop nethervpn-client.\n\n"
-                "Запустить Full Tunnel?"
-            ):
-                return
-        except (OSError, ValueError, configparser.Error) as exc:
-            messagebox.showerror("Профиль", str(exc))
+        preferences = self.save_settings(notify=False)
+        if preferences is None:
+            return
+        mode = self.mode_var.get()
+        if mode == "full" and not messagebox.askyesno(
+            "Full Tunnel",
+            "Весь IPv4 и DNS компьютера будут направлены через VPN. IPv6 будет "
+            "заблокирован. При аварийном обрыве доступ в интернет может исчезнуть.\\n\\n"
+            "Включить полный туннель?"
+        ):
             return
         self.active = profile
         self.since = time.monotonic()
         self.previous_counters = None
-        def started():
-            self.log("Служба NetherVPN запущена: " + profile.stem)
+
+        def launched():
+            self.log("NetherVPN запущен: " + profile.stem)
             self.state.set("Проверка соединения…")
-        def installed():
-            self.privileged(["/usr/bin/systemctl", "restart", "nethervpn-client.service"], started)
-        # Install a private root-owned snapshot; no keys on argv.
-        self.privileged(["/usr/bin/install", "-m", "600", "-o", "root", "-g", "root",
-                         str(profile), "/etc/nethervpn/client.conf"], installed)
+            # Applies on next machine boot; does not disturb this session.
+            command = "enable" if self.autostart_var.get() else "disable"
+            self.privileged(
+                ["/usr/bin/systemctl", command, "nethervpn-client.service"],
+                lambda: self.log("Автоподключение при запуске ОС: " +
+                                 ("включено" if command == "enable" else "отключено"))
+            )
+
+        def settings_installed():
+            self.privileged(
+                ["/usr/bin/systemctl", "restart", "nethervpn-client.service"],
+                launched
+            )
+
+        def profile_installed():
+            self.privileged([
+                "/usr/bin/install", "-m", "600", "-o", "root", "-g", "root",
+                str(preferences), "/etc/nethervpn/client-settings.conf"
+            ], settings_installed)
+
+        # Both identity and preferences are copied with 0600; only systemd
+        # starts the privileged client. The private key never enters argv.
+        self.privileged([
+            "/usr/bin/install", "-m", "600", "-o", "root", "-g", "root",
+            str(profile), "/etc/nethervpn/client.conf"
+        ], profile_installed)
 
     def disconnect(self):
         if self.busy:
