@@ -101,6 +101,7 @@ public final class NetherVpnService extends VpnService {
                 .putString("state", state)
                 .putString("phase", newPhase)
                 .putLong("since_elapsed", connectedSinceElapsed)
+                .putLong("updated_elapsed", SystemClock.elapsedRealtime())
                 .putLong("tx", bytesUp.get())
                 .putLong("rx", bytesDown.get())
                 .putLong("dropped", droppedPackets.get())
@@ -126,7 +127,8 @@ public final class NetherVpnService extends VpnService {
             lastUiUpdate = now;
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                     .putLong("tx", bytesUp.get()).putLong("rx", bytesDown.get())
-                    .putLong("dropped", droppedPackets.get()).apply();
+                    .putLong("dropped", droppedPackets.get())
+                    .putLong("updated_elapsed", now).apply();
         }
     }
 
@@ -271,6 +273,9 @@ public final class NetherVpnService extends VpnService {
                     if (plain == null) continue;
                     if (Arrays.equals(plain, NoiseTransport.PONG)) {
                         lastPong = SystemClock.elapsedRealtime();
+                        // Refresh the UI heartbeat on authenticated keepalive,
+                        // even when no application data is flowing.
+                        updateStats();
                         continue;
                     }
                     int verdict = PacketPolicy.inbound(plain, plain.length, profile.localBytes,
