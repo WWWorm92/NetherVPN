@@ -394,7 +394,15 @@ class App(tk.Tk):
                     text=True, capture_output=True, timeout=3, check=False)
                 self.log("Маршрут IPv4: " + (route.stdout or route.stderr).strip()[:300])
                 if " dev nvpn0 " not in " " + route.stdout + " ":
-                    self.log("Внимание: маршрут пока не через nvpn0. Проверьте журнал nethervpn-client и NAT сервера.")
+                    self.log("IPv4 пока не проходит через nvpn0 — проверьте handshake, DNS и NAT сервера.")
+            journal = subprocess.run(
+                ["journalctl", "-u", "nethervpn-client.service",
+                 "-n", "8", "--no-pager", "-o", "cat"],
+                text=True, capture_output=True, timeout=3, check=False)
+            if journal.returncode == 0 and journal.stdout.strip():
+                self.log("Журнал службы: " + journal.stdout.strip()[-900:])
+            elif journal.returncode:
+                self.log("Журнал недоступен из GUI. Используйте: sudo journalctl -u nethervpn-client -n 50")
         except (OSError, subprocess.TimeoutExpired) as exc:
             self.log("Диагностика: " + str(exc))
 
