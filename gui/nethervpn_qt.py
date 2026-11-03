@@ -9,14 +9,15 @@ import tempfile
 import time
 import shutil
 
-from PySide6.QtCore import Qt, QTimer, QThread, Signal, QRectF, QPointF, QEasingCurve, QPropertyAnimation, Property
-from PySide6.QtGui import QColor, QPainter, QPen, QFont, QIcon, QRadialGradient
+from PySide6.QtCore import Qt, QTimer, QThread, Signal, QRectF, QPointF, QSize, QEasingCurve, QPropertyAnimation, Property
+from PySide6.QtGui import QColor, QPainter, QPen, QFont, QIcon, QPixmap, QPainterPath, QRadialGradient
 from PySide6.QtWidgets import (
     QApplication, QWidget, QMainWindow, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QFrame, QStackedWidget, QListWidget, QLineEdit, QComboBox,
     QCheckBox, QDialog, QDialogButtonBox, QFileDialog, QMessageBox, QGridLayout,
     QPlainTextEdit, QSizePolicy, QScrollArea
 )
+from PySide6.QtSvg import QSvgRenderer
 from client_preferences import encode, decode
 
 BASE = Path.home() / ".config" / "nethervpn" / "profiles"
@@ -59,6 +60,60 @@ QCheckBox { spacing: 12px; background: transparent; }
 QScrollArea, QScrollArea > QWidget > QWidget { border: none; background: transparent; }
 QDialog { background: #0c1727; }\nQToolTip { background: #192f46; color: #eff8ff; border: 1px solid #31556a; padding: 7px; }
 """
+
+def brand_icon():
+    """Render the actual bundled brand SVG even if Qt's SVG image plugin is absent."""
+    source = ROOT / "assets" / "nethervpn.svg"
+    renderer = QSvgRenderer(str(source))
+    if not renderer.isValid():
+        return QIcon()
+    bitmap = QPixmap(256, 256)
+    bitmap.fill(Qt.GlobalColor.transparent)
+    paint = QPainter(bitmap)
+    renderer.render(paint)
+    paint.end()
+    return QIcon(bitmap)
+
+
+def navigation_icon(kind, selected=False):
+    """Small vector icons; never rely on missing Unicode symbol fonts."""
+    bitmap = QPixmap(28, 28)
+    bitmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(bitmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    col = QColor(MINT if selected else MUTED)
+    painter.setPen(QPen(col, 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
+                        Qt.PenJoinStyle.RoundJoin))
+    if kind == "home":
+        painter.drawLine(5, 13, 14, 5)
+        painter.drawLine(14, 5, 23, 13)
+        painter.drawLine(8, 11, 8, 23)
+        painter.drawLine(20, 11, 20, 23)
+        painter.drawLine(8, 23, 20, 23)
+    elif kind == "server":
+        for y in (5, 13):
+            painter.drawRoundedRect(5, y, 18, 8, 3, 3)
+            painter.drawPoint(9, y+4)
+    elif kind == "profile":
+        painter.drawRoundedRect(6, 4, 16, 20, 2, 2)
+        for y in (11, 16, 21):
+            painter.drawLine(10, y, 18, y)
+    elif kind == "chart":
+        for x, y in ((6, 15), (12, 9), (18, 5)):
+            painter.drawRoundedRect(x, y, 4, 23-y, 1, 1)
+    elif kind == "settings":
+        painter.drawEllipse(7, 7, 14, 14)
+        painter.drawEllipse(11, 11, 6, 6)
+        for a, b, c, d in ((14, 3, 14, 7), (14, 21, 14, 25),
+                            (3, 14, 7, 14), (21, 14, 25, 14)):
+            painter.drawLine(a, b, c, d)
+    else:
+        painter.drawEllipse(5, 5, 18, 18)
+        painter.drawPoint(14, 10)
+        painter.drawLine(14, 14, 14, 19)
+    painter.end()
+    return QIcon(bitmap)
+
 
 def label(text, size=None, muted=False, name=None):
     obj = QLabel(text)
@@ -183,7 +238,7 @@ class Window(QMainWindow):
         BASE.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(BASE, 0o700)
         self.setWindowTitle("NetherVPN")
-        icon_png = Path.home() / ".local/share/icons/hicolor/256x256/apps/nethervpn.png"\n        self.setWindowIcon(QIcon(str(icon_png if icon_png.is_file() else ROOT/"assets/nethervpn.svg"))))
+        self.setWindowIcon(brand_icon()))
         self.resize(1050, 750)
         self.setMinimumSize(850, 650)
         self.busy = False
@@ -591,7 +646,7 @@ class Window(QMainWindow):
         else:
             title, subtitle, color = "Подключить", "Нажмите для включения", MUTED
         self.ring.state(title, subtitle, color)
-        self.status.setText("●  " + ("VPN-интерфейс активен" if iface else "Служба запущена" if running else "Не подключено"))
+        self.status.setText("●  " + ("VPN-интерфейс активен" if iface else "Служба запущена" if running else "Не подключено"))\n        self.status.setStyleSheet("color: " + (MINT if iface else AMBER if running else MUTED))
         self.hint.setText("Интерфейс VPN активен" if iface else "Проверьте подключение" if running else "Выберите сервер и подключитесь")
         self.side_status.setText("●  Служба активна" if running else "●  Служба остановлена")
         if iface:
