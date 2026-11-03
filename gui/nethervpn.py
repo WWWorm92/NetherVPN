@@ -16,6 +16,7 @@ from tkinter import filedialog, messagebox, ttk
 BASE = Path.home() / ".config" / "nethervpn" / "profiles"
 APP_ROOT = Path(__file__).resolve().parent.parent
 CLIENT = APP_ROOT / "bin" / "nether-client"
+HELPER = "/usr/local/libexec/nether-desktop-helper"
 BG = "#101827"
 PANEL = "#192539"
 TEXT = "#edf4ff"
@@ -135,6 +136,7 @@ class App(tk.Tk):
         self.connect_btn = self.button(actions, "Подключить", self.connect, True)
         self.connect_btn.pack(side="left", padx=(0, 9))
         self.button(actions, "Отключить", self.disconnect).pack(side="left")
+        self.button(actions, "Проверить", self.inspect_connection).pack(side="left", padx=(9, 0))
         stats = tk.Frame(right, bg=PANEL)
         stats.pack(fill="x", padx=24, pady=(24, 14))
         for title, var in (("ОТПРАВЛЕНО", self.tx), ("ПОЛУЧЕНО", self.rx), ("ВРЕМЯ", self.timing)):
@@ -291,27 +293,38 @@ class App(tk.Tk):
             self.refresh()
             self.log("Профиль удалён")
 
-    def privileged(self, args, on_ok):
+    def privileged(self, args, on_ok, on_error=None):
+        """One polkit authentication per user-requested connect/disconnect."""
         if self.busy:
             return
         self.busy = True
         self.state.set("Выполняется операция…")
         def run():
             try:
-                proc = subprocess.run(["pkexec", *args], text=True,
-                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                      timeout=45, check=False)
+                proc = subprocess.run(["pkexec", HELPER, *args],
+                                      text=True, stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE, timeout=120, check=False)
                 if proc.returncode:
-                    raise RuntimeError(proc.stderr.strip() or "Команда завершилась с ошибкой")
-                self.after(0, lambda: (setattr(self, "busy", False), on_ok()))
+                    raise RuntimeError(proc.stderr.strip() or "Операция отклонена")
+                self.after(0, lambda: self.finish_operation(on_ok, proc.stdout))
             except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
                 message = str(exc)
-                self.after(0, lambda: self.log("Ошибка: " + message))
-                self.after(0, lambda: self.state.set("Ошибка управления подключением"))
-                self.after(0, lambda: setattr(self, "busy", False))
-            finally:
-                pass
+                self.after(0, lambda: self.fail_operation(message, on_error))
         threading.Thread(target=run, daemon=True).start()
+
+    def finish_operation(self, callback, output=""):
+        self.busy = False
+        if output.strip():
+            self.log(output.strip())
+        callback()
+
+    def fail_operation(self, message, callback=None):
+        self.busy = False
+        self.state.set("Ошибка управления подключением")
+        self.log("Ошибка: " + message[:600])
+        if callback:
+            callback()
+        messagebox.showerror("NetherVPN", message[:800])
 
     def connect(self):
         if self.busy:
@@ -337,39 +350,25 @@ class App(tk.Tk):
             "Включить полный туннель?"
         ):
             return
+        if not Path(HELPER).is_file():
+            messagebox.showerror("NetherVPN",
+                "Не найден помощник. Повторите: bash scripts/install-desktop.sh")
+            return
         self.active = profile
         self.since = time.monotonic()
         self.previous_counters = None
 
-        def launched():
-            self.log("NetherVPN запущен: " + profile.stem)
-            self.state.set("Проверка соединения…")
-            # Applies on next machine boot; does not disturb this session.
-            command = "enable" if self.autostart_var.get() else "disable"
-            self.privileged(
-                ["/usr/bin/systemctl", command, "nethervpn-client.service"],
-                lambda: self.log("Автоподключение при запуске ОС: " +
-                                 ("включено" if command == "enable" else "отключено"))
-            )
+        def started():
+            self.log("Служба запущена: " + profile.stem)
+            self.state.set("Ожидание защищённого соединения…")
+            self.inspect_connection()
 
-        def settings_installed():
-            self.privileged(
-                ["/usr/bin/systemctl", "restart", "nethervpn-client.service"],
-                launched
-            )
+        def failed():
+            self.active = None
+            self.previous_counters = None
 
-        def profile_installed():
-            self.privileged([
-                "/usr/bin/install", "-m", "600", "-o", "root", "-g", "root",
-                str(preferences), "/etc/nethervpn/client-settings.conf"
-            ], settings_installed)
-
-        # Both identity and preferences are copied with 0600; only systemd
-        # starts the privileged client. The private key never enters argv.
-        self.privileged([
-            "/usr/bin/install", "-m", "600", "-o", "root", "-g", "root",
-            str(profile), "/etc/nethervpn/client.conf"
-        ], profile_installed)
+        # One pkexec operation for profile, settings, service and autostart.
+        self.privileged(["connect", profile.name], started, failed)
 
     def disconnect(self):
         if self.busy:
@@ -379,7 +378,33 @@ class App(tk.Tk):
             self.previous_counters = None
             self.state.set("Не подключено")
             self.log("Служба NetherVPN остановлена")
-        self.privileged(["/usr/bin/systemctl", "stop", "nethervpn-client.service"], stopped)
+        self.privileged(["disconnect"], stopped)
+
+    def inspect_connection(self):
+        """Check systemd and IPv4 route without additional authorization."""
+        try:
+            result = subprocess.run(
+                ["systemctl", "show", "nethervpn-client.service",
+                 "--property=ActiveState", "--property=SubState"],
+                text=True, capture_output=True, timeout=3, check=False)
+            self.log("systemd: " + result.stdout.strip().replace("\n", "; "))
+            if self.mode_var.get() == "full":
+                route = subprocess.run(
+                    ["ip", "-4", "route", "get", "1.1.1.1"],
+                    text=True, capture_output=True, timeout=3, check=False)
+                self.log("Маршрут IPv4: " + (route.stdout or route.stderr).strip()[:300])
+                if " dev nvpn0 " not in " " + route.stdout + " ":
+                    self.log("IPv4 пока не проходит через nvpn0 — проверьте handshake, DNS и NAT сервера.")
+            journal = subprocess.run(
+                ["journalctl", "-u", "nethervpn-client.service",
+                 "-n", "8", "--no-pager", "-o", "cat"],
+                text=True, capture_output=True, timeout=3, check=False)
+            if journal.returncode == 0 and journal.stdout.strip():
+                self.log("Журнал службы: " + journal.stdout.strip()[-900:])
+            elif journal.returncode:
+                self.log("Журнал недоступен из GUI. Используйте: sudo journalctl -u nethervpn-client -n 50")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            self.log("Диагностика: " + str(exc))
 
     def read_log(self):
         if not self.logfile:

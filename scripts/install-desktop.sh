@@ -12,6 +12,8 @@ fi
 cd "$ROOT"
 go build -o bin/nether-client ./cmd/nether-client
 sudo install -o root -g root -m 0755 bin/nether-client /usr/local/bin/nether-client
+sudo install -d -m 0755 /usr/local/libexec
+sudo install -m 0755 scripts/nether-desktop-helper.py /usr/local/libexec/nether-desktop-helper
 sudo install -d -o root -g root -m 0700 /etc/nethervpn
 sudo install -o root -g root -m 0644 packaging/systemd/nethervpn-client.service /etc/systemd/system/nethervpn-client.service
 sudo systemctl daemon-reload
@@ -19,3 +21,9 @@ mkdir -p "$HOME/.local/share/applications"
 printf '[Desktop Entry]\nType=Application\nName=NetherVPN\nComment=Experimental Linux VPN client\nExec=/usr/bin/python3 %s/gui/nethervpn.py\nTerminal=false\nCategories=Network;\n' "$ROOT" > "$HOME/.local/share/applications/nethervpn.desktop"
 chmod 0644 "$HOME/.local/share/applications/nethervpn.desktop"
 echo 'NetherVPN installed in application menu.'
+if ! command -v resolvectl >/dev/null; then
+  echo 'WARNING: Full Tunnel needs resolvectl (systemd-resolved).' >&2
+  echo 'Install and activate systemd-resolved before connecting in Full mode.' >&2
+elif ! systemctl is-active --quiet systemd-resolved.service; then
+  echo 'WARNING: systemd-resolved is inactive. Full Tunnel DNS will not work.' >&2
+fi
