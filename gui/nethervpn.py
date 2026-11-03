@@ -16,6 +16,7 @@ from tkinter import filedialog, messagebox, ttk
 BASE = Path.home() / ".config" / "nethervpn" / "profiles"
 APP_ROOT = Path(__file__).resolve().parent.parent
 CLIENT = APP_ROOT / "bin" / "nether-client"
+HELPER = "/usr/local/libexec/nether-desktop-helper"
 BG = "#101827"
 PANEL = "#192539"
 TEXT = "#edf4ff"
@@ -291,27 +292,38 @@ class App(tk.Tk):
             self.refresh()
             self.log("Профиль удалён")
 
-    def privileged(self, args, on_ok):
+    def privileged(self, args, on_ok, on_error=None):
+        """One polkit authentication per user-requested connect/disconnect."""
         if self.busy:
             return
         self.busy = True
         self.state.set("Выполняется операция…")
         def run():
             try:
-                proc = subprocess.run(["pkexec", *args], text=True,
-                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                      timeout=45, check=False)
+                proc = subprocess.run(["pkexec", HELPER, *args],
+                                      text=True, stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE, timeout=120, check=False)
                 if proc.returncode:
-                    raise RuntimeError(proc.stderr.strip() or "Команда завершилась с ошибкой")
-                self.after(0, lambda: (setattr(self, "busy", False), on_ok()))
+                    raise RuntimeError(proc.stderr.strip() or "Операция отклонена")
+                self.after(0, lambda: self.finish_operation(on_ok, proc.stdout))
             except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
                 message = str(exc)
-                self.after(0, lambda: self.log("Ошибка: " + message))
-                self.after(0, lambda: self.state.set("Ошибка управления подключением"))
-                self.after(0, lambda: setattr(self, "busy", False))
-            finally:
-                pass
+                self.after(0, lambda: self.fail_operation(message, on_error))
         threading.Thread(target=run, daemon=True).start()
+
+    def finish_operation(self, callback, output=""):
+        self.busy = False
+        if output.strip():
+            self.log(output.strip())
+        callback()
+
+    def fail_operation(self, message, callback=None):
+        self.busy = False
+        self.state.set("Ошибка управления подключением")
+        self.log("Ошибка: " + message[:600])
+        if callback:
+            callback()
+        messagebox.showerror("NetherVPN", message[:800])
 
     def connect(self):
         if self.busy:
