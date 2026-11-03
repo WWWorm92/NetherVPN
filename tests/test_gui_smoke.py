@@ -40,8 +40,8 @@ class QtDesktopSmokeTest(unittest.TestCase):
                     self.assertEqual(window.profile_label.text(), "Добавить сервер")
                     p = root / "laptop.conf"
                     p.write_text(
-                        "[Interface]\\nName = nvpn0\\nAddress = 10.77.0.3/32\\n"
-                        "[Peer]\\nEndpoint = 192.0.2.1:51830\\nAllowedIPs = 10.77.0.1\\n"
+                        "[Interface]\nName = nvpn0\nAddress = 10.77.0.3/32\n"
+                        "[Peer]\nEndpoint = 192.0.2.1:51830\nAllowedIPs = 10.77.0.1\n"
                     )
                     p.chmod(0o600)
                     window.refresh_profiles()
