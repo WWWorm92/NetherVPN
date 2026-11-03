@@ -25,6 +25,7 @@ type activePeer struct {
  addr *net.UDPAddr
  source netip.Addr
  secure *session.Session
+ authenticatedPings uint64
 }
 type cachedInit struct {
  response []byte
@@ -141,6 +142,8 @@ func serveContinuous(ctx context.Context,c Config,identity noise.DHKey,authorize
   if p==nil {mu.Unlock();continue}
   plain,e:=p.secure.Open(data)
   if e==nil && bytes.Equal(plain,[]byte("\x00NVPN-PING-v1")){
+   p.authenticatedPings++
+   if p.authenticatedPings == 1 { log.Printf("server: first authenticated encrypted PING from client %s", p.source) }
    reply,sealErr:=p.secure.Seal([]byte("\x00NVPN-PONG-v1"))
    if sealErr==nil {_,sealErr=conn.WriteToUDP(reply,addr)}
    if sealErr!=nil{log.Printf("server: keepalive failed: %v",sealErr)}
