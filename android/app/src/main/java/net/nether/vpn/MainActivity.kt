@@ -390,7 +390,9 @@ class MainActivity : Activity() {
         }
         detail.text = if (phase == "stale")
             "Нет свежего подтверждения от VPN-службы. Проверьте настройки."
-            else if (phase == "error" || phase == "reconnecting")\n            prefs.getString("last_error", prefs.getString("state", "Нет соединения"))\n            else prefs.getString("state", "Не подключено")
+            else if (phase == "error" || phase == "reconnecting")
+            prefs.getString("last_error", prefs.getString("state", "Нет соединения"))
+            else prefs.getString("state", "Не подключено")
         connectButton.text = when (phase) {
             "connected" -> "Подключено"
             "connecting" -> "Подключение…"
