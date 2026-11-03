@@ -1,19 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="NetherVPN">
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 128 128" role="img" aria-label="NetherVPN — N inside secure tunnel">
   <defs>
-    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1b4354"/>
-      <stop offset="1" stop-color="#0a121f"/>
+    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#272a31"/>
+      <stop offset="0.55" stop-color="#181a20"/>
+      <stop offset="1" stop-color="#101216"/>
     </linearGradient>
-    <linearGradient id="shield" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ffd39a"/>
-      <stop offset="1" stop-color="#ffae52"/>
+    <linearGradient id="copper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe2b1"/>
+      <stop offset=".46" stop-color="#ffb766"/>
+      <stop offset="1" stop-color="#f58b43"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#353841"/>
+      <stop offset="1" stop-color="#1c1e24"/>
     </linearGradient>
   </defs>
-  <rect width="128" height="128" rx="30" fill="url(#background)"/>
-  <path d="M64 19 104 36 V63 C104 88 88 106 64 115 C40 106 24 88 24 63 V36 Z"
-        fill="none" stroke="url(#shield)" stroke-width="8" stroke-linejoin="round"/>
-  <path d="M47 62 59 74 83 50"
-        fill="none" stroke="#f1f7ff" stroke-width="9"
-        stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="96" cy="32" r="6" fill="#ffb15c"/>
+  <rect width="128" height="128" rx="28" fill="url(#surface)"/>
+  <rect x="1.5" y="1.5" width="125" height="125" rx="26.5" fill="none" stroke="#3d3d43" stroke-opacity=".7" stroke-width="1.5"/>
+  <circle cx="64" cy="64" r="45.5" fill="#18191f" stroke="url(#rim)" stroke-width="3"/>
+  <circle cx="64" cy="64" r="41" fill="none" stroke="#ffb565" stroke-opacity=".18" stroke-width="2"/>
+  <circle cx="64" cy="64" r="42.5" fill="none" stroke="url(#copper)" stroke-width="3.5"/>
+  <path d="M44 84 V44 L84 84 V44" fill="none" stroke="#0d1115" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>
+  <path d="M44 84 V44 L84 84 V44" fill="none" stroke="url(#copper)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M44 44 L84 84" fill="none" stroke="#fff0d9" stroke-opacity=".43" stroke-width="2.5" stroke-linecap="round"/>
 </svg>
