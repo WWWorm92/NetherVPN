@@ -3,6 +3,7 @@
 package main
 
 import (
+ "bufio"
  "encoding/hex"
  "errors"
  "flag"
@@ -43,13 +44,14 @@ func main(){
   full:=*mode=="full"
   kind:=*platform
   if *name==""||*endpoint==""{
-   options,_,err:=wizard(os.Stdin,os.Stdout,*config,provisionOptions{
+   input:=bufio.NewReader(os.Stdin)
+   options,_,err:=wizard(input,os.Stdout,*config,provisionOptions{
     Name:*name,Endpoint:*endpoint,DNS:*dns,Platform:*platform,FullTunnel:full,
    })
    if err!=nil{fail(err)}
    *name,*endpoint,*dns,kind,full=options.Name,options.Endpoint,options.DNS,options.Platform,options.FullTunnel
    if err:=createWithMode(*config,*dir,*outputDir,*name,*endpoint,*dns,kind,full);err!=nil{fail(err)}
-   askRestart(os.Stdin,os.Stdout)
+   askRestart(input,os.Stdout)
   }else{
    if kind==""{kind="android"}
    if err:=createWithMode(*config,*dir,*outputDir,*name,*endpoint,*dns,kind,full);err!=nil{fail(err)}
