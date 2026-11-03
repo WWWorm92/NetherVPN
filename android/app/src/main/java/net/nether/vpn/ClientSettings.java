@@ -13,11 +13,13 @@ public final class ClientSettings {
     public final boolean fullTunnel;
     public final String dns;
     public final boolean bindMobileUdp;
+    public final boolean advertiseUnderlying;
 
-    private ClientSettings(boolean fullTunnel, String dns, boolean bindMobileUdp) {
+    private ClientSettings(boolean fullTunnel, String dns, boolean bindMobileUdp, boolean advertiseUnderlying) {
         this.fullTunnel = fullTunnel;
         this.dns = dns;
         this.bindMobileUdp = bindMobileUdp;
+        this.advertiseUnderlying = advertiseUnderlying;
     }
 
     public static ClientSettings load(Context context, VpnProfile legacyProfile) {
@@ -30,21 +32,22 @@ public final class ClientSettings {
         String dns = prefs.contains("configured")
                 ? prefs.getString("dns", "1.1.1.1")
                 : legacyProfile.dns;
-        return new ClientSettings(full, dns, prefs.getBoolean("bind_mobile_udp", true));
+        return new ClientSettings(full, dns, prefs.getBoolean("bind_mobile_udp", true), prefs.getBoolean("advertise_underlying", true));
     }
 
-    public static ClientSettings save(Context context, boolean full, String rawDns, boolean bindMobileUdp)
+    public static ClientSettings save(Context context, boolean full, String rawDns, boolean bindMobileUdp, boolean advertiseUnderlying)
             throws Exception {
         String dns = validateDNS(rawDns);
         boolean saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putBoolean("full", full)
                 .putBoolean("bind_mobile_udp", bindMobileUdp)
+                .putBoolean("advertise_underlying", advertiseUnderlying)
                 .putString("dns", dns)
                 .putBoolean("configured", true)
                 .commit();
         if (!saved) throw new IllegalStateException("Не удалось сохранить настройки");
-        return new ClientSettings(full, dns, bindMobileUdp);
+        return new ClientSettings(full, dns, bindMobileUdp, advertiseUnderlying);
     }
 
     public static String validateDNS(String raw) throws Exception {
