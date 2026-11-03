@@ -12,15 +12,15 @@ privacy-critical traffic or production systems.**
   Keystore storage, keepalives, encrypted packet forwarding and reconnect.
 - Multiple independently authorized clients on one gateway; return packets are
   delivered to the assigned client IP, not just the last connected client.
-- `nether-admin create/list/revoke` generates unique Android `.conf` profiles,
+- `sudo nether-admin` opens a Russian server menu to create/list/revoke universal Android/Linux `.conf` identities,
   allocates a free tunnel IPv4 and registers each client's public key.
-- Optional **Android full-tunnel IPv4** (all device IPv4 + DNS routed through
-  the encrypted tunnel; IPv6 intercepted and blocked until supported).
+- Android **and Linux** select Full/Split IPv4 tunnel and DNS locally in their UIs; generated server profiles contain no routing choices.
+- Linux desktop supports optional boot autoconnect via systemd. Android Always-on and block-without-VPN are OS-controlled.
 - Optional scoped IPv4 NAT/forwarding on the gateway, with opt-in systemd
   boot persistence. The server's default route remains unchanged.
 - Android debug APK built by GitHub Actions and published as a pre-release.
 
-**Get started:** [Full-tunnel setup and rollback](docs/FULL-TUNNEL.md) ·
+**Get started:** [Server management](docs/ADMIN.md) · [Full-tunnel setup](docs/FULL-TUNNEL.md) ·
 [Android client](android/README.md) ·
 [Releases](https://github.com/WWWorm92/NetherVPN/releases) ·
 [Security](docs/SECURITY.md)
