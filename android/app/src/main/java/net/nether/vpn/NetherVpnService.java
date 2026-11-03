@@ -36,6 +36,7 @@ public final class NetherVpnService extends VpnService {
     private final AtomicLong droppedPackets = new AtomicLong();
     private volatile long connectedSinceElapsed = 0;
     private volatile String phase = "disconnected";
+    private volatile String lastError = "";
     private volatile boolean running;
     private Thread worker;
     private DatagramSocket socket;
@@ -63,8 +64,13 @@ public final class NetherVpnService extends VpnService {
                 !CONNECT.equals(intent.getAction()) &&
                 !VpnService.SERVICE_INTERFACE.equals(intent.getAction()))
             return START_NOT_STICKY;
-        if (!SecretStore.exists(this) || VpnService.prepare(this) != null)
+        if (!SecretStore.exists(this) || VpnService.prepare(this) != null) {
+            lastError = !SecretStore.exists(this) ? "Сначала импортируйте профиль"
+                    : "Android не предоставил разрешение VPN";
+            publish(lastError, "error");
+            stopSelf(startId);
             return START_NOT_STICKY;
+        }
         startForeground(NOTIFICATION_ID, notification("Подключение…"));
         synchronized (lifecycleLock) {
             if (running) return START_NOT_STICKY;
@@ -73,6 +79,7 @@ public final class NetherVpnService extends VpnService {
             bytesDown.set(0);
             droppedPackets.set(0);
             connectedSinceElapsed = 0;
+            lastError = "";
             worker = new Thread(this::connectionLoop, "NetherVPN-worker");
             worker.start();
         }
@@ -100,6 +107,7 @@ public final class NetherVpnService extends VpnService {
         getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                 .putString("state", state)
                 .putString("phase", newPhase)
+                .putString("last_error", lastError)
                 .putLong("since_elapsed", connectedSinceElapsed)
                 .putLong("updated_elapsed", SystemClock.elapsedRealtime())
                 .putLong("tx", bytesUp.get())
@@ -173,18 +181,24 @@ public final class NetherVpnService extends VpnService {
                 if (device == null) throw new IOException("Android отказал в создании VPN TUN");
                 synchronized (lifecycleLock) { tun = device; }
                 connectedSinceElapsed = SystemClock.elapsedRealtime();
+                lastError = "";
                 publish(settings.fullTunnel ? "Подключено · весь IPv4 через VPN" : "Подключено · только " + profile.peerIp, "connected");
                 delay = 1;
                 transfer(udp, secure, device, profile, settings.fullTunnel);
             } catch (Exception error) {
-                if (running) publish("Ошибка: " + concise(error), "error");
+                if (running) {
+                    lastError = "Ошибка VPN: " + concise(error);
+                    Log.e("NetherVPN", "VPN connection failed: " + concise(error));
+                    publish(lastError, "error");
+                }
             } finally {
                 closeCurrent();
                 if (secure != null) secure.close();
             }
             if (running) {
                 connectedSinceElapsed = 0;
-                publish("Переподключение через " + delay + " с", "reconnecting");
+                publish(lastError.isEmpty() ? "Переподключение через " + delay + " с"
+                        : lastError + " · повтор через " + delay + " с", "reconnecting");
                 try { Thread.sleep(delay * 1000L); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
                 delay = Math.min(delay * 2, 8);
             }
