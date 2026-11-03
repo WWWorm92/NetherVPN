@@ -1,16 +1,10 @@
-# NetherVPN Linux desktop — full IPv4 tunnel (experimental)
+# NetherVPN Linux desktop — local connection settings
 
-The Linux client supports **FullTunnel = true**, DNS via systemd-resolved,
-IPv4 policy routing and IPv6 fail-closed blocking, with restoration on
-graceful disconnect. The GUI is `gui/nethervpn.py`; the systemd service runs
-the privileged Go client and owns the TUN and routes.
+**Experimental.** The same universal `.conf` from `sudo nether-admin` works
+in both Android and Linux. Neither the server nor the identity config decides
+whether Full Tunnel is enabled.
 
-**Warning:** Full Tunnel changes routing for the **entire workstation**,
-including remote SSH sessions, LAN printers and local services. Do not
-activate from a remote session unless you have console access. The custom
-VPN has not undergone an independent security audit.
-
-## Install on Linux workstation
+## Installation
 
 ```bash
 sudo apt install python3-tk polkitd pkexec iproute2 systemd-resolved
@@ -20,57 +14,60 @@ bash scripts/install-desktop.sh
 python3 gui/nethervpn.py
 ```
 
-Import a unique `.conf` created on the gateway using `sudo nether-admin`.
-Choose Linux and **Full Tunnel** in the wizard. The GUI displays the chosen
-routing mode and DNS, asks before activating Full Tunnel, and uses polkit
-to copy the profile to `/etc/nethervpn/client.conf` as a 0600 root-owned
-file. Closing the window leaves the service running; disconnect via the
-GUI or `sudo systemctl stop nethervpn-client`.
+Import your generated `.conf`, select it, then choose in the **Linux GUI**:
 
-## Linux Full Tunnel implementation
+- **Весь IPv4 через VPN**: system-wide Full Tunnel, DNS over encrypted VPN,
+  IPv6 blocked until supported. Server needs NAT/forwarding.
+- **Только адрес VPN-сервера**: Split Tunnel, only the assigned server peer IP
+  routed through the tunnel.
+- **DNS**: numeric IPv4 server (default 1.1.1.1), used in Full Tunnel.
+- **Подключаться при запуске Linux**: optional systemd `enable`, applied at
+  the next connection. Disabling autostart does not disconnect current VPN.
 
-Before connecting, the client validates keys and the numeric IPv4 endpoint,
-then creates a dedicated Linux policy routing table **51830**:
+Click **Сохранить настройки** and then reconnect to apply. Routing preferences
+are written to a separate user-owned `~/.config/nethervpn/profiles/NAME.prefs`
+file with mode 0600; they are **not** inserted into `.conf`. When you connect,
+the GUI snapshots this file as
+`/etc/nethervpn/client-settings.conf`, mode 0600, and systemd starts
+`nether-client -config /etc/nethervpn/client.conf -settings
+/etc/nethervpn/client-settings.conf`. Previous profiles containing
+`FullTunnel` and `DNS` are readable for migration. New GUI settings take
+precedence. Settings can be different for each imported identity.
 
-- Rule priority **12100** routes only the pinned public VPN server endpoint
-  via the host's pre-existing `main` routing table, preventing a UDP loop.
-- Rule priority **12101** sends normal IPv4 and IPv6 through dedicated table
-  51830. This table initially has only **unreachable** defaults.
-- When the encrypted handshake succeeds and TUN is ready, a lower-metric
-  `default dev nvpn0` activates IPv4 forwarding inside that table.
-- DNS is configured on `nvpn0` through `resolvectl dns`,
-  `resolvectl domain nvpn0 '~.'` and `resolvectl default-route`.
-- Replies from the Internet may originate at any address but must target
-  the authenticated client's assigned VPN IP.
-- IPv6 remains unreachable while Full Tunnel is active; native IPv6
-  tunneling has not been implemented yet.
+### Routing behavior
 
-On TUN loss, the tunnel route is removed, but unreachable routes stay active
-while the VPN reconnects. **On graceful disconnect**, routing rules and
-NetherVPN DNS overrides are removed. The main default route is never replaced.
+The full-tunnel Linux client reserves routing table 51830 and priorities
+12100/12101; the server public IPv4 is excluded from the VPN to keep its
+encrypted UDP path alive. The existing host main default route is not
+overwritten. With an authenticated TUN the IPv4 default route is inserted in
+table 51830 and DNS configured via `resolvectl`. In reconnect periods an
+unreachable fallback route blocks IPv4/IPv6 from escaping. The fail-closed
+policy is integral to Linux Full Tunnel; disabling it would allow leaks.
 
-**FullTunnel = false** keeps the machine's ordinary default routes and DNS,
-adding only the inside server-IP route via the TUN. Generated /32 profiles
-work in both modes.
+**The policy is not a guaranteed persistent host firewall Kill Switch across
+SIGKILL, power loss, or all systemd restarts.** After graceful disconnect the
+VPN routes and DNS overrides are removed. On a forced termination, rules may
+remain and block Internet. Do not enable host-wide routing from an SSH-only
+session without alternate console access.
 
-## Troubleshooting and manual recovery
+To inspect:
 
 ```bash
-systemctl status nethervpn-client --no-pager -l
 sudo journalctl -u nethervpn-client -n 80 --no-pager
-ip -4 rule show
 ip -4 route show table 51830
-ip -6 route show table 51830
+ip -4 rule show
 resolvectl status nvpn0
 curl -4 https://api.ipify.org
 ```
 
-The public IPv4 should match your gateway when Full Tunnel is active.
+To stop gracefully:
 
-On force-kill (SIGKILL) the fail-closed policy may remain after the process
-exits, preventing direct Internet. First try stopping the service gracefully.
-If it is already dead and you have **verified** rule priorities 12100/12101
-and table 51830 belong to NetherVPN, an administrator can remove them:
+```bash
+sudo systemctl stop nethervpn-client
+```
+
+For exceptional manual recovery **after verifying the reserved rules belong to
+NetherVPN**:
 
 ```bash
 sudo ip -4 rule del pref 12100
@@ -80,12 +77,5 @@ sudo ip -4 route flush table 51830
 sudo ip -6 route flush table 51830
 ```
 
-**Do not run those commands blindly** on machines with other policy routing.
-The controller also refuses to start if its reserved policy table or rules
-are already occupied.
-
-This is a reconnect-time fail-closed policy, **not** a certified always-on
-kill switch across every systemd service restart or administrative stop.
-A systemd-resolved-compatible setup is required: if `resolvectl` is missing,
-the client refuses Full Tunnel rather than silently using regular DNS.
-No real-device full-tunnel integration or DNS/IPv6 leak audit is claimed.
+Avoid recovery commands if table 51830 belongs to another service.
+Do not assume a successful CI build proves tested VPN functionality or privacy.
