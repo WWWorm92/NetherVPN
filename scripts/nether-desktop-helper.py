@@ -147,6 +147,10 @@ def connect(name, uid):
             ["/usr/bin/systemctl", "is-active", "--quiet", "nethervpn-server.service"],
             capture_output=True, check=False)
         if result.returncode == 0:
+            local_settings = configparser.ConfigParser(interpolation=None)
+            local_settings.read_string(settings.decode("utf-8"))
+            if local_settings.get("Client", "Mode") == "full":
+                fail("Full Tunnel нельзя включать на работающем VPN-сервере: будет нарушена маршрутизация шлюза.")
             gateway = configparser.ConfigParser(interpolation=None)
             client = configparser.ConfigParser(interpolation=None)
             gateway.read(ROOT / "server.conf")
