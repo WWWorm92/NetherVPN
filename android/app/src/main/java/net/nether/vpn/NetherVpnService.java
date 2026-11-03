@@ -34,6 +34,13 @@ public final class NetherVpnService extends VpnService {
     private final AtomicLong bytesUp = new AtomicLong();
     private final AtomicLong bytesDown = new AtomicLong();
     private final AtomicLong droppedPackets = new AtomicLong();
+    private final AtomicLong inboundWire = new AtomicLong();
+    private final AtomicLong inboundDecrypted = new AtomicLong();
+    private final AtomicLong inboundWritten = new AtomicLong();
+    private final AtomicLong invalidInbound = new AtomicLong();
+    private final AtomicLong outboundDropped = new AtomicLong();
+    private final AtomicLong inboundDropped = new AtomicLong();
+    private final AtomicLong ipv6Dropped = new AtomicLong();
     private volatile long connectedSinceElapsed = 0;
     private volatile String phase = "disconnected";
     private volatile String lastError = "";
@@ -81,6 +88,13 @@ public final class NetherVpnService extends VpnService {
             bytesUp.set(0);
             bytesDown.set(0);
             droppedPackets.set(0);
+            inboundWire.set(0);
+            inboundDecrypted.set(0);
+            inboundWritten.set(0);
+            invalidInbound.set(0);
+            outboundDropped.set(0);
+            inboundDropped.set(0);
+            ipv6Dropped.set(0);
             connectedSinceElapsed = 0;
             lastError = "";
             failedStage = "";
@@ -120,6 +134,13 @@ public final class NetherVpnService extends VpnService {
                 .putLong("tx", bytesUp.get())
                 .putLong("rx", bytesDown.get())
                 .putLong("dropped", droppedPackets.get())
+                .putLong("wire_rx", inboundWire.get())
+                .putLong("decrypted_rx", inboundDecrypted.get())
+                .putLong("written_rx", inboundWritten.get())
+                .putLong("invalid_rx", invalidInbound.get())
+                .putLong("outbound_drops", outboundDropped.get())
+                .putLong("inbound_drops", inboundDropped.get())
+                .putLong("ipv6_drops", ipv6Dropped.get())
                 .apply();
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (running) manager.notify(NOTIFICATION_ID, notification(state));
@@ -134,7 +155,10 @@ public final class NetherVpnService extends VpnService {
 
     /** Rejected TUN packets are normal on dual-stack Android networks.
      * Never log their contents and never destroy an authenticated session. */
-    private void noteDrop(int reason, int bytes) {
+    private void noteDrop(int reason, int bytes, boolean inbound) {
+        if (inbound) inboundDropped.incrementAndGet();
+        else outboundDropped.incrementAndGet();
+        if (reason == PacketPolicy.IPV6_UNSUPPORTED) ipv6Dropped.incrementAndGet();
         long count = droppedPackets.incrementAndGet();
         if (count <= 3 || (count & (count - 1)) == 0) {
             Log.i("NetherVPN", "Dropped IP packet: " + PacketPolicy.reason(reason)
@@ -150,6 +174,13 @@ public final class NetherVpnService extends VpnService {
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                     .putLong("tx", bytesUp.get()).putLong("rx", bytesDown.get())
                     .putLong("dropped", droppedPackets.get())
+                    .putLong("wire_rx", inboundWire.get())
+                    .putLong("decrypted_rx", inboundDecrypted.get())
+                    .putLong("written_rx", inboundWritten.get())
+                    .putLong("invalid_rx", invalidInbound.get())
+                    .putLong("outbound_drops", outboundDropped.get())
+                    .putLong("inbound_drops", inboundDropped.get())
+                    .putLong("ipv6_drops", ipv6Dropped.get())
                     .putLong("updated_elapsed", now).apply();
         }
     }
@@ -283,14 +314,14 @@ public final class NetherVpnService extends VpnService {
                     if (count < 0) return;
                     if (count == 0) continue;
                     if (count > profile.mtu) {
-                        noteDrop(PacketPolicy.MALFORMED, count);
+                        noteDrop(PacketPolicy.MALFORMED, count, false);
                         continue;
                     }
                     // IPv6 traffic is captured but deliberately not transmitted:
                     // gateway currently supports only routed/NATed IPv4.
                     int verdict = PacketPolicy.outbound(data, count, profile.localBytes);
                     if (verdict != PacketPolicy.OK) {
-                        noteDrop(verdict, count);
+                        noteDrop(verdict, count, false);
                         continue;
                     }
                     send(udp, secure.seal(data, count));
@@ -320,8 +351,14 @@ public final class NetherVpnService extends VpnService {
                     udp.setSoTimeout(500);
                     DatagramPacket incoming = new DatagramPacket(buffer, buffer.length);
                     udp.receive(incoming);
+                    inboundWire.incrementAndGet();
                     byte[] plain = secure.open(buffer, incoming.getLength());
-                    if (plain == null) continue;
+                    if (plain == null) {
+                        invalidInbound.incrementAndGet();
+                        updateStats();
+                        continue;
+                    }
+                    inboundDecrypted.incrementAndGet();
                     if (Arrays.equals(plain, NoiseTransport.PONG)) {
                         lastPong = SystemClock.elapsedRealtime();
                         // Refresh the UI heartbeat on authenticated keepalive,
@@ -332,10 +369,11 @@ public final class NetherVpnService extends VpnService {
                     int verdict = PacketPolicy.inbound(plain, plain.length, profile.localBytes,
                             profile.peerBytes, fullTunnel);
                     if (verdict != PacketPolicy.OK) {
-                        noteDrop(verdict, plain.length);
+                        noteDrop(verdict, plain.length, true);
                         continue;
                     }
                     output.write(plain);
+                    inboundWritten.incrementAndGet();
                     bytesDown.addAndGet(plain.length);
                     updateStats();
                 } catch (java.net.SocketTimeoutException ignored) { }
