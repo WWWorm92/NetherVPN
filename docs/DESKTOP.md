@@ -275,3 +275,35 @@ profile selector and diagnostics. It intentionally no longer looks like a
 stretched mobile client. The old polkit/systemd helper and profile storage
 are unchanged. The sidebar status reflects service state, not proof of full
 end-to-end connectivity.
+
+## Qt 6 desktop replacement
+
+The default Linux UI has moved from the legacy Tkinter implementation to
+`gui/nethervpn_qt.py` (PySide6). This is a UI-only migration: systemd,
+`/usr/local/libexec/nether-desktop-helper`, portable `.conf` files, local
+`.prefs`, routing and the Noise protocol are unchanged.
+
+Run:
+
+```bash
+cd ~/NetherVPN
+git pull --ff-only
+sudo apt install python3-venv
+bash scripts/install-desktop.sh
+./.venv/bin/python gui/nethervpn_qt.py
+```
+
+The installer sets up an isolated `.venv` for Qt and points the desktop
+launcher at the new UI. The old `gui/nethervpn.py` remains only for rollback,
+not as the installed launcher. No sudo should be used to run either GUI.
+Qt includes a resizable desktop layout, rounded navigation, animated
+connection dial and separate pages for profiles, statistics and settings.
+
+Test on a desktop with:
+```bash
+QT_QPA_PLATFORM=offscreen ./.venv/bin/python -m unittest discover -s tests -p test_gui_smoke.py -v
+```
+
+The circle indicates systemd and TUN interface state, not proof of encrypted
+end-to-end traffic. For full tunnel verification, use the diagnostics and
+external IPv4/DNS checks.
