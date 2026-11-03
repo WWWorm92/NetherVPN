@@ -73,154 +73,183 @@ class MainActivity : Activity() {
 
     private lateinit var modeTitle: TextView
 
-    private fun powerRing(color: Int) = GradientDrawable().apply {
-        shape = GradientDrawable.OVAL
-        setColor(navy)
-        setStroke(dp(3), color)
+
+    private fun connectionSurface(color: Int) = GradientDrawable().apply {
+        orientation = GradientDrawable.Orientation.TL_BR
+        colors = intArrayOf(color, Color.rgb(33, 98, 107))
+        cornerRadius = dp(30).toFloat()
     }
+
+    private fun softCard(color: Int = card, radius: Int = 28) =
+        shape(color, radius)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = navy
-        window.navigationBarColor = card
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        window.navigationBarColor = navy
+
+        // Compact, native, vertically scrollable dashboard without fake navigation tabs.
+        val root = ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
             setBackgroundColor(navy)
         }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(25), dp(22), dp(24))
+        }
+        root.addView(content)
 
-        // Small fixed header; the connection controls remain usable on a
-        // short phone because only the central region scrolls.
         val heading = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(22), dp(18), dp(16), dp(12))
         }
         heading.addView(ImageView(this).apply {
             setImageResource(R.drawable.ic_nethervpn_foreground)
-            background = shape(raised, 11)
+            background = shape(raised, 16)
             contentDescription = "NetherVPN"
-        }, LinearLayout.LayoutParams(dp(42), dp(42)).apply {
-            rightMargin = dp(11)
+            setPadding(dp(3), dp(3), dp(3), dp(3))
+        }, LinearLayout.LayoutParams(dp(48), dp(48)).apply {
+            rightMargin = dp(12)
         })
-        heading.addView(text("NetherVPN", 20f, white, true),
-            LinearLayout.LayoutParams(0, -2, 1f))
-        heading.addView(text("ANDROID  ·  BETA", 10f, muted, true))
-        root.addView(heading)
+        val branding = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        branding.addView(text("NetherVPN", 22f, white, true))
+        branding.addView(text("Приватная сеть · Ваш сервер", 11f, muted))
+        heading.addView(branding, LinearLayout.LayoutParams(0, -2, 1f))
+        heading.addView(text("ALPHA", 10f, mint, true).apply {
+            background = shape(raised, 14)
+            setPadding(dp(11), dp(7), dp(11), dp(7))
+        })
+        content.addView(heading)
+        space(content, 32)
 
-        val scroll = ScrollView(this).apply {
-            isFillViewport = true
-            clipToPadding = false
-        }
-        val main = LinearLayout(this).apply {
+        content.addView(text("ЗАЩИТА СОЕДИНЕНИЯ", 11f, muted, true))
+        space(content, 16)
+
+        val hero = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(16), dp(8), dp(16), dp(12))
+            background = softCard(card, 32)
+            setPadding(dp(22), dp(24), dp(22), dp(23))
         }
-        scroll.addView(main)
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-
-        space(main, 8)
+        badge = text("●  НЕ ПОДКЛЮЧЕНО", 12f, muted, true)
+        hero.addView(badge)
+        space(hero, 12)
+        status = text("VPN выключен", 27f, white, true)
+        hero.addView(status)
+        space(hero, 8)
+        detail = text("Подключитесь к своему серверу", 13f, muted).apply {
+            maxLines = 3
+        }
+        hero.addView(detail)
+        space(hero, 24)
         connectButton = Button(this).apply {
             isAllCaps = false
-            textSize = 20f
+            text = "Подключить"
+            textSize = 17f
             setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-            setTextColor(white)
-            background = powerRing(muted)
-            elevation = dp(4).toFloat()
-            contentDescription = "Подключить VPN"
+            setTextColor(navy)
+            background = connectionSurface(mint)
+            elevation = dp(2).toFloat()
+            minHeight = dp(62)
+            minimumHeight = dp(62)
+            contentDescription = "Управление VPN-соединением"
             setOnClickListener {
                 if (phase == "disconnected") connect() else disconnect()
             }
         }
-        main.addView(connectButton, LinearLayout.LayoutParams(dp(226), dp(226)))
-        space(main, 20)
-        badge = text("●  НЕ ПОДКЛЮЧЕНО", 12f, muted, true)
-        main.addView(badge)
-        space(main, 7)
-        status = text("VPN выключен", 14f, white)
-        main.addView(status)
-        space(main, 4)
-        detail = text("Нажмите на круг для подключения", 11f, muted).apply {
-            gravity = Gravity.CENTER
-            maxLines = 2
+        hero.addView(connectButton, LinearLayout.LayoutParams(-1, dp(62)))
+        content.addView(hero)
+        space(content, 17)
+
+        val metrics = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
         }
-        main.addView(detail)
-        space(main, 18)
-        val info = LinearLayout(this).apply {
+        fun metricTile(caption: String, value: TextView): LinearLayout =
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = softCard(card, 24)
+                setPadding(dp(17), dp(17), dp(12), dp(17))
+                addView(text(caption, 10f, muted, true))
+                space(this, 7)
+                addView(value)
+            }
+        down = text("0 Б", 18f, white, true)
+        up = text("0 Б", 18f, white, true)
+        dropped = text("0", 12f, muted)
+        uptime = text("00:00:00", 12f, muted)
+        metrics.addView(metricTile("↓  ПОЛУЧЕНО", down),
+            LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(7) })
+        metrics.addView(metricTile("↑  ОТПРАВЛЕНО", up),
+            LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(7) })
+        content.addView(metrics)
+        val diagnostics = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(15), dp(4), dp(6))
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Показать подробную статистику"
+            setOnClickListener { statisticsDialog() }
         }
-        up = text("↑ 0 Б", 12f, muted)
-        down = text("↓ 0 Б", 12f, muted)
-        uptime = text("00:00:00", 12f, muted)
-        dropped = text("0", 12f, muted)
-        info.addView(up)
-        info.addView(text("    •    ", 11f, muted))
-        info.addView(down)
-        info.isClickable = true
-        info.isFocusable = true
-        info.contentDescription = "Показать статистику VPN"
-        info.setOnClickListener { statisticsDialog() }
-        main.addView(info)
-        space(main, 5)
-        main.addView(uptime)
+        diagnostics.addView(text("Сессия", 12f, muted))
+        diagnostics.addView(uptime, LinearLayout.LayoutParams(0, -2, 1f).apply {
+            leftMargin = dp(8)
+        })
+        diagnostics.addView(text("Статистика  ↗", 12f, mint, true))
+        content.addView(diagnostics)
+        space(content, 20)
 
-        // Minimal footer: one route-policy row and one active server.
-        val footer = LinearLayout(this).apply {
+        content.addView(text("ПОДКЛЮЧЕНИЕ", 11f, muted, true))
+        space(content, 10)
+        val server = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), 0, dp(16), dp(12))
-        }
-        modeTitle = text("Режим подключения  ⌄", 12f, muted).apply {
-            gravity = Gravity.CENTER
-            setPadding(dp(5), dp(13), dp(5), dp(14))
-            setOnClickListener { settingsDialog() }
-        }
-        footer.addView(modeTitle, LinearLayout.LayoutParams(-1, -2))
-        val selected = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = shape(card, 28)
-            setPadding(dp(18), dp(16), dp(18), dp(16))
+            background = softCard(card, 27)
+            setPadding(dp(20), dp(18), dp(20), dp(18))
             isClickable = true
             isFocusable = true
             setOnClickListener { profileDialog() }
         }
-        selected.addView(text("АКТИВНЫЙ СЕРВЕР", 10f, muted, true))
-        space(selected, 7)
-        profile = text("Добавить сервер   ＋", 21f, white, true)
-        selected.addView(profile)
-        space(selected, 4)
+        server.addView(text("ВАШ ПРОФИЛЬ     ›", 10f, muted, true))
+        space(server, 8)
+        profile = text("Добавить сервер", 19f, white, true)
+        server.addView(profile)
+        space(server, 5)
         endpoint = text("Конфигурация не загружена", 12f, muted)
-        selected.addView(endpoint)
-        footer.addView(selected)
-        space(footer, 12)
+        server.addView(endpoint)
+        content.addView(server)
+        space(content, 12)
 
-        val navigation = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            background = shape(card, 25)
-            setPadding(dp(4), dp(6), dp(4), dp(6))
+        modeTitle = text("Режим подключения   ›", 13f, mint).apply {
+            background = softCard(raised, 22)
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { settingsDialog() }
         }
-        fun menuAction(title: String, onTap: () -> Unit): Button =
-            Button(this).apply {
-                text = title
-                isAllCaps = false
-                textSize = 12f
-                setTextColor(if (title.startsWith("⌂")) amber else muted)
-                background = shape(card, 22)
-                minHeight = dp(45)
-                minimumHeight = dp(45)
-                setOnClickListener { onTap() }
-            }
-        navigation.addView(menuAction("⌂  Главная") { },
-            LinearLayout.LayoutParams(0, dp(47), 1f))
-        navigation.addView(menuAction("⚙  Настройки") { settingsDialog() },
-            LinearLayout.LayoutParams(0, dp(47), 1f))
-        navigation.addView(menuAction("＋  Импорт") { importDocument() },
-            LinearLayout.LayoutParams(0, dp(47), 1f))
-        footer.addView(navigation)
-        root.addView(footer)
+        content.addView(modeTitle, LinearLayout.LayoutParams(-1, -2))
+        space(content, 18)
 
-        // Settings fields exist only for the settings sheet, not the home UI.
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fun secondary(label: String, action: () -> Unit) = Button(this).apply {
+            text = label
+            isAllCaps = false
+            textSize = 13f
+            setTextColor(white)
+            background = softCard(raised, 22)
+            minHeight = dp(52)
+            minimumHeight = dp(52)
+            setOnClickListener { action() }
+        }
+        actions.addView(secondary("⚙  Настройки") { settingsDialog() },
+            LinearLayout.LayoutParams(0, dp(52), 1f).apply { rightMargin = dp(7) })
+        actions.addView(secondary("＋  Импорт") { importDocument() },
+            LinearLayout.LayoutParams(0, dp(52), 1f).apply { leftMargin = dp(7) })
+        content.addView(actions)
+        space(content, 16)
+        content.addView(text("Noise IK · IPv4 · Экспериментальный VPN",
+            10f, muted).apply { gravity = Gravity.CENTER },
+            LinearLayout.LayoutParams(-1, -2))
+
         full = RadioButton(this)
         split = RadioButton(this)
         dns = EditText(this)
