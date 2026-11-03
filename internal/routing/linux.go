@@ -39,6 +39,7 @@ type Controller struct {
  Interface string
  Endpoint netip.Addr
  DNS netip.Addr
+ Source netip.Addr
  undo []command
  prepared bool
  linked bool
@@ -53,6 +54,13 @@ func New(iface, endpoint, resolver string)(*Controller,error){
  dnsIP,err:=netip.ParseAddr(resolver)
  if err!=nil||!dnsIP.Is4()||dnsIP.IsUnspecified(){return nil,errors.New("routing: DNS must be numeric IPv4")}
  return &Controller{Runner:executable{},Interface:iface,Endpoint:addr,DNS:dnsIP},nil
+}
+// SetLocalAddress pins the TUN's assigned IPv4 source for default-routed traffic.
+func (c *Controller) SetLocalAddress(cidr string)error {
+ prefix,err:=netip.ParsePrefix(cidr)
+ if err!=nil||!prefix.Addr().Is4()||prefix.Addr().IsUnspecified(){return errors.New("routing: full tunnel requires assigned IPv4 client Address")}
+ c.Source=prefix.Addr()
+ return nil
 }
 func (c *Controller) run(cmd command)error{_,err:=c.Runner.Run(cmd.name,cmd.args...);return err}
 func (c *Controller) value(cmd command)(string,error){return c.Runner.Run(cmd.name,cmd.args...)}
@@ -110,7 +118,17 @@ func (c *Controller) Prepare()error{
 func (c *Controller) Up()error{
  if !c.prepared{return errors.New("routing: not prepared")}
  if c.linked{return nil}
- if err:=c.run(ip("-4","route","add","default","dev",c.Interface,"table",Table,"metric","10"));err!=nil{return err}
+ args:=[]string{"-4","route","add","default","dev",c.Interface,"table",Table,"metric","10"}
+ if c.Source.IsValid(){args=append(args,"src",c.Source.String())}
+ if err:=c.run(ip(args...));err!=nil{return err}
+ // Confirm the kernel's actual policy lookup, not merely the table contents.
+ probe:="1.1.1.1"
+ if c.Endpoint.String()==probe{probe="9.9.9.9"}
+ selected,err:=c.value(ip("-4","route","get",probe))
+ if err!=nil||!routeUsesInterface(selected,c.Interface){
+  c.Down()
+  return fmt.Errorf("routing: IPv4 default route does not use %s (got %q): %v",c.Interface,strings.TrimSpace(selected),err)
+ }
  if err:=c.run(dns("dns",c.Interface,c.DNS.String()));err!=nil{
   c.Down();return fmt.Errorf("routing: cannot configure DNS: %w",err)
  }
@@ -124,11 +142,21 @@ func (c *Controller) Up()error{
  return nil
 }
 
+func routeUsesInterface(output, iface string)bool {
+ parts:=strings.Fields(output)
+ for i:=0;i+1<len(parts);i++{
+  if parts[i]=="dev" && parts[i+1]==iface{return true}
+ }
+ return false
+}
+
 func (c *Controller) Down(){
  if !c.prepared{return}
  // DNS can already be gone because the interface was removed during reconnect.
  _=c.run(dns("revert",c.Interface))
- _=c.run(ip("-4","route","del","default","dev",c.Interface,"table",Table,"metric","10"))
+ args:=[]string{"-4","route","del","default","dev",c.Interface,"table",Table,"metric","10"}
+ if c.Source.IsValid(){args=append(args,"src",c.Source.String())}
+ _=c.run(ip(args...))
  c.linked=false
 }
 
