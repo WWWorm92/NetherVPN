@@ -11,6 +11,7 @@ import android.net.VpnService;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.net.LinkProperties;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
@@ -53,6 +54,13 @@ public final class NetherVpnService extends VpnService {
     private volatile String failedStage = "";
     private volatile String transportNetwork = "unselected";
     private volatile String udpMode = "unselected";
+    private volatile String networkBeforeTun = "unknown";
+    private volatile String networkAfterTun = "unknown";
+    private volatile String socketBeforeTun = "unknown";
+    private volatile String socketAfterTun = "unknown";
+    private volatile String underlyingAdvertisement = "unset";
+    private final AtomicLong keepalivePongs = new AtomicLong();
+    private final AtomicLong keepalivePings = new AtomicLong();
     private volatile boolean running;
     private Thread worker;
     private DatagramSocket socket;
@@ -108,6 +116,13 @@ public final class NetherVpnService extends VpnService {
             stage = "start";
             transportNetwork = "unselected";
             udpMode = "unselected";
+            networkBeforeTun = "unknown";
+            networkAfterTun = "unknown";
+            socketBeforeTun = "unknown";
+            socketAfterTun = "unknown";
+            underlyingAdvertisement = "unset";
+            keepalivePongs.set(0);
+            keepalivePings.set(0);
             worker = new Thread(this::connectionLoop, "NetherVPN-worker");
             worker.start();
         }
@@ -140,6 +155,13 @@ public final class NetherVpnService extends VpnService {
                 .putString("failed_stage", failedStage)
                 .putString("transport_network", transportNetwork)
                 .putString("udp_mode", udpMode)
+                .putString("network_before_tun", networkBeforeTun)
+                .putString("network_after_tun", networkAfterTun)
+                .putString("socket_before_tun", socketBeforeTun)
+                .putString("socket_after_tun", socketAfterTun)
+                .putString("underlying_advertisement", underlyingAdvertisement)
+                .putLong("keepalive_pings", keepalivePings.get())
+                .putLong("keepalive_pongs", keepalivePongs.get())
                 .putLong("since_elapsed", connectedSinceElapsed)
                 .putLong("updated_elapsed", SystemClock.elapsedRealtime())
                 .putLong("tx", bytesUp.get())
@@ -245,6 +267,48 @@ public final class NetherVpnService extends VpnService {
         return "other";
     }
 
+    /** Bounded, privacy-safe snapshot of physical transport capabilities. */
+    private String networkSnapshot(Network network) {
+        if (network == null) return "none";
+        try {
+            ConnectivityManager cm = getSystemService(ConnectivityManager.class);
+            if (cm == null) return "unavailable";
+            NetworkCapabilities caps = cm.getNetworkCapabilities(network);
+            LinkProperties links = cm.getLinkProperties(network);
+            if (caps == null) return "lost";
+            String kind = transportName(caps);
+            String validation = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                    ? "validated" : "unvalidated";
+            boolean ipv4 = false, ipv6 = false, clat = false;
+            if (links != null) {
+                for (android.net.LinkAddress address : links.getLinkAddresses()) {
+                    if (address.getAddress() instanceof java.net.Inet4Address) ipv4 = true;
+                    if (address.getAddress() instanceof java.net.Inet6Address) ipv6 = true;
+                }
+                for (android.net.RouteInfo route : links.getRoutes()) {
+                    if (route.getInterface() != null && route.getInterface().contains("clat"))
+                        clat = true;
+                }
+                String interfaceName = links.getInterfaceName();
+                if (interfaceName != null && interfaceName.contains("clat")) clat = true;
+            }
+            return kind + ":" + validation + ":ipv4=" + ipv4
+                    + ":ipv6=" + ipv6 + ":clat=" + clat;
+        } catch (SecurityException error) {
+            return "permission-denied";
+        }
+    }
+
+    private static String socketSnapshot(DatagramSocket udp) {
+        if (udp == null || udp.isClosed()) return "closed";
+        // Local endpoint address can be sensitive; expose only socket family,
+        // current ephemeral port and whether connect() is still active.
+        java.net.InetAddress addr = udp.getLocalAddress();
+        String family = addr instanceof java.net.Inet6Address ? "ipv6" : "ipv4";
+        return family + ":port=" + udp.getLocalPort()
+                + ":connected=" + udp.isConnected();
+    }
+
     private void connectionLoop() {
         int delay = 1;
         while (running) {
@@ -290,6 +354,8 @@ public final class NetherVpnService extends VpnService {
                 if (!protect(udp)) throw new IOException("Не удалось исключить UDP-сокет из VPN");
                 Log.i("NetherVPN", "VPN UDP path: " + transportNetwork + ", mode=" + udpMode);
                 udp.connect(server);
+                networkBeforeTun = networkSnapshot(upstream);
+                socketBeforeTun = socketSnapshot(udp);
                 step("noise_ik", "Noise IK: аутентификация…");
                 secure = NoiseTransport.handshake(udp, server, profile);
                 step("encrypted_ping", "Проверка зашифрованного обмена…");
@@ -314,15 +380,24 @@ public final class NetherVpnService extends VpnService {
                 ParcelFileDescriptor device = builder.establish();
                 if (device == null) throw new IOException("Android отказал в создании VPN TUN");
                 synchronized (lifecycleLock) { tun = device; }
-                // Advertise the physical transport explicitly to Android.
-                if (upstream != null && udpMode.equals("bound") && (transportNetwork.equals("wifi")
-                        || transportNetwork.equals("cellular")
-                        || transportNetwork.equals("ethernet"))) {
-                    try { setUnderlyingNetworks(new Network[] { upstream }); }
-                    catch (SecurityException error) {
-                        Log.w("NetherVPN", "Cannot advertise underlying network; VPN remains active", error);
+                // Test whether cellular Android routing changes when
+                // underlying network advertisement is omitted.
+                boolean canAdvertise = upstream != null && udpMode.equals("bound")
+                        && (transportNetwork.equals("wifi") || transportNetwork.equals("cellular")
+                        || transportNetwork.equals("ethernet"));
+                if (canAdvertise && settings.advertiseUnderlying) {
+                    try {
+                        boolean advertised = setUnderlyingNetworks(new Network[] { upstream });
+                        underlyingAdvertisement = advertised ? "enabled" : "rejected";
+                    } catch (SecurityException error) {
+                        underlyingAdvertisement = "permission-denied";
+                        Log.w("NetherVPN", "Cannot advertise underlying network", error);
                     }
+                } else {
+                    underlyingAdvertisement = "disabled";
                 }
+                networkAfterTun = networkSnapshot(upstream);
+                socketAfterTun = socketSnapshot(udp);
                 connectedSinceElapsed = SystemClock.elapsedRealtime();
                 lastError = "";
                 stage = "connected";
@@ -374,6 +449,7 @@ public final class NetherVpnService extends VpnService {
             long now = SystemClock.elapsedRealtime();
             if (now >= nextPing) {
                 send(udp, secure.seal(NoiseTransport.PING, NoiseTransport.PING.length));
+                keepalivePings.incrementAndGet();
                 nextPing = now + 1200;
             }
             try {
@@ -383,6 +459,7 @@ public final class NetherVpnService extends VpnService {
                 received++;
                 byte[] plain = secure.open(buffer, packet.getLength());
                 if (Arrays.equals(plain, NoiseTransport.PONG)) {
+                    keepalivePongs.incrementAndGet();
                     Log.i("NetherVPN", "Authenticated encrypted ping/pong confirmed");
                     return;
                 }
@@ -436,9 +513,14 @@ public final class NetherVpnService extends VpnService {
                 Throwable failure = outgoingError.get();
                 if (failure != null) throw new IOException("Ошибка отправки: " + concise(failure), failure);
                 long now = SystemClock.elapsedRealtime();
-                if (now - lastPong > 20000) throw new IOException("Сервер не отвечает на keepalive");
+                if (now - lastPong > 20000) {
+                    networkAfterTun = networkSnapshot(upstreamNetwork());
+                    socketAfterTun = socketSnapshot(udp);
+                    throw new IOException("Сервер не отвечает на keepalive");
+                }
                 if (now - lastPing >= 5000) {
                     send(udp, secure.seal(NoiseTransport.PING, NoiseTransport.PING.length));
+                    keepalivePings.incrementAndGet();
                     lastPing = now;
                 }
                 try {
@@ -455,6 +537,7 @@ public final class NetherVpnService extends VpnService {
                     inboundDecrypted.incrementAndGet();
                     if (Arrays.equals(plain, NoiseTransport.PONG)) {
                         lastPong = SystemClock.elapsedRealtime();
+                        keepalivePongs.incrementAndGet();
                         // Refresh the UI heartbeat on authenticated keepalive,
                         // even when no application data is flowing.
                         updateStats();
