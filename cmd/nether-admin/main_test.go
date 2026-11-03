@@ -51,3 +51,23 @@ func TestRejectUnsafeInputs(t *testing.T) {
   if err:=validateEndpoint(endpoint);err==nil{t.Fatalf("accepted endpoint %s",endpoint)}
  }
 }
+
+func TestCreateLinuxSplitProfile(t *testing.T){
+ server,err:=handshake.GenerateIdentity()
+ if err!=nil{t.Fatal(err)}
+ legacy,err:=handshake.GenerateIdentity()
+ if err!=nil{t.Fatal(err)}
+ dir:=t.TempDir()
+ path:=filepath.Join(dir,"server.conf")
+ raw:=fmt.Sprintf("[Interface]\nName = nvpn0\nPrivateKey = %x\nAddress = 10.77.0.1/24\nListenPort = 51830\n\n[Peer]\nPublicKey = %x\nAllowedIPs = 10.77.0.2\n",server.Private,legacy.Public)
+ if err:=os.WriteFile(path,[]byte(raw),0600);err!=nil{t.Fatal(err)}
+ exports:=filepath.Join(dir,"exports")
+ err=createWithMode(path,filepath.Join(dir,"peers"),exports,"laptop","77.221.132.76:51830","9.9.9.9","linux",false)
+ if err!=nil{t.Fatal(err)}
+ data,err:=os.ReadFile(filepath.Join(exports,"laptop.conf"))
+ if err!=nil{t.Fatal(err)}
+ text:=string(data)
+ for _,need:=range []string{"# NetherVPN profile for linux", "FullTunnel = false", "DNS = 9.9.9.9", "Address = 10.77.0.3/32"} {
+  if !strings.Contains(text,need){t.Errorf("missing %q from Linux profile",need)}
+ }
+}
