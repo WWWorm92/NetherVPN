@@ -136,3 +136,54 @@ python3 gui/nethervpn.py
 Do not enable Full Tunnel until the initial table check and existing TUN
 conflict are cleared. A separate issue such as gateway NAT or DNS can still
 require diagnosis after the client begins forwarding packets.
+
+## Reconnect loop after successful handshake: invalid IP packet
+
+A previous Linux Full Tunnel build repeatedly showed
+`client: authenticated handshake complete`, followed immediately by
+`client: tunnel: invalid IP packet; retrying ...`. TUN is a raw kernel
+packet interface: it may emit IPv6, malformed/truncated packets or IPv4
+whose source is not the assigned VPN address. Those packets must **not**
+be sent through NetherVPN, but they must also **not** terminate the
+authenticated session.
+
+The desktop client now drops invalid, oversized, unsupported IPv6 and
+source-spoofed outbound packets and keeps the same session up. It emits
+rate-limited counters without recording packet payloads, for example:
+
+```text
+client: dropped outbound TUN packet: IPv6 blocked in IPv4-only Full Tunnel (40 bytes, 1 dropped); keeping session alive
+```
+
+Transport I/O failures, a genuinely silent authenticated peer and crypto
+errors still trigger reconnection. Split Tunnel applies the same
+source-address protection. The server also rejects spoofed client sources.
+
+To install the new client and review status:
+
+```bash
+cd ~/NetherVPN
+git status --short
+git pull --ff-only
+sudo systemctl stop nethervpn-client
+bash scripts/install-desktop.sh
+python3 gui/nethervpn.py
+```
+
+If `git pull` reports local changes, review them with `git diff` and back
+them up (for example `git stash push -u -m "local-pre-update"`) before
+updating; do not discard private files or custom work. Check afterward:
+
+```bash
+sudo journalctl -u nethervpn-client -n 40 --no-pager
+ip -br addr show nvpn0
+ip -4 route get 1.1.1.1
+curl -4 --max-time 8 https://api.ipify.org
+```
+
+Your network may also contain an earlier-priority IPsec/AmneziaWG routing
+rule (for example preference 220), which can influence routing independently
+of NetherVPN. This fix addresses the packet-triggered reconnect loop, **not**
+all coexistence, DNS, upstream gateway forwarding/NAT or firewall issues.
+When confirming Full Tunnel, first verify a stable TUN and a kernel default
+route through `nvpn0`; then test the real external IPv4 and DNS.
