@@ -228,3 +228,32 @@ before updating. Do not reset private profiles or overwrite local changes.
 Android 0.6 Alpha debug APK is published by the Android Actions workflow
 when merged to `main`. This UI redesign does not modify VPN protocol or
 gateway configuration.
+
+## Optional passwordless desktop control (polkit)
+
+NetherVPN normally requests a polkit authentication for each connect/disconnect
+because the desktop helper writes root-owned client settings and controls a
+systemd service, TUN routes and DNS. Do not run the GUI with sudo.
+
+To opt into passwordless control **only for the currently logged-in local
+desktop account and the fixed root-installed NetherVPN helper**:
+
+```bash
+cd ~/NetherVPN
+git pull --ff-only
+bash scripts/install-desktop.sh
+bash scripts/passwordless-desktop.sh enable
+```
+
+To revoke this permission:
+
+```bash
+bash scripts/passwordless-desktop.sh disable
+```
+
+This is not equivalent to making the user root, but every process running as
+that user in an active local session can invoke the helper without
+authentication and influence host VPN configuration. Only use this setting
+on a trusted personal machine. The installed helper must remain root-owned,
+not writable by ordinary users. The optional rule does not grant generic
+sudo, shell or systemctl commands.
