@@ -100,3 +100,18 @@ Neither a production security audit nor reliable IPv6 forwarding, roaming,
 kill switch implementation across all Android device vendor variations,
 independent gateway/Android interoperability testing, and production key
 rotation have been completed.
+
+## 0.7 Alpha dashboard refresh
+
+The home screen uses a vertically scrollable connection summary with a
+single wide connect/disconnect button, visible upload/download statistics,
+selectable server profile and local routing mode. Detailed counters remain in
+Statistics. Dark ocean/slate surfaces, mint connection accents, and matching
+adaptive icons are shared with Linux. No changes to the Noise wire protocol,
+profile keys or server authorization are made by this UI release.
+
+Use a **unique server-provisioned .conf for each device**: running Linux and
+Android simultaneously with one profile/key/IP replaces the peer session and
+causes apparent reconnect loops. Create a separate Android identity with
+`sudo nether-admin` before testing. This alpha still requires real-device
+interoperability, full-tunnel NAT and DNS testing.
