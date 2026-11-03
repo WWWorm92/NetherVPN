@@ -60,15 +60,15 @@ sudo bash scripts/configure-full-tunnel.sh disable eth0 10.77.0.0/24 nvpn0
 
 Do **not** casually disable `net.ipv4.ip_forward` if other routing services need it.
 
-## 3. Create a unique Android profile
+## 3. Create a universal client profile
 
 ```bash
-sudo nether-admin create -name phone -endpoint 45.151.69.184:51830
+sudo nether-admin
 sudo nether-admin list
 sudo systemctl restart nethervpn-server
 ```
 
-The generated secret-bearing profile is at
+Choose Create client, enter a name and public IPv4 endpoint. The generated file works on both Android and Linux; choose Full/Split and DNS in the client app, not in this wizard.\n\nThe generated secret-bearing profile is at
 `/etc/nethervpn/clients/phone.conf`, mode 0600, and can be transferred via
 a secure channel. The public authorization record is stored separately in
 `/etc/nethervpn/peers/phone.conf`.
@@ -103,8 +103,6 @@ Name = nvpn0
 PrivateKey = <generated-private-key>
 Address = 10.77.0.3/32
 MTU = 1280
-FullTunnel = true
-DNS = 1.1.1.1
 
 [Peer]
 PublicKey = <pinned-server-public-key>
@@ -112,8 +110,7 @@ Endpoint = 45.151.69.184:51830
 AllowedIPs = 10.77.0.1
 ```
 
-Android routes 0.0.0.0/0 to the TUN and configures DNS (1.1.1.1, entered in
-the profile). DNS therefore travels through the encrypted IPv4 tunnel. IPv6
+Select Full IPv4 mode and DNS (such as 1.1.1.1) in the Android app. Android then routes 0.0.0.0/0 to TUN and uses the locally selected resolver. DNS therefore travels through the encrypted IPv4 tunnel. IPv6
 0::/0 is captured and intentionally dropped (no fallback through cellular/Wi-Fi).
 The UDP socket to the public server is excluded using `VpnService.protect`.
 
