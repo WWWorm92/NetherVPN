@@ -387,7 +387,6 @@ public final class NetherVpnService extends VpnService {
                 if (!protect(udp)) throw new IOException("Не удалось исключить UDP-сокет из VPN");
                 Log.i("NetherVPN", "VPN UDP path: " + transportNetwork + ", mode=" + udpMode);
                 udp.connect(server);
-                networkBeforeTun = networkSnapshot(upstream);
                 socketBeforeTun = isCellular ? "not-created-before-tun" : socketSnapshot(udp);
                 step("noise_ik", "Noise IK: аутентификация…");
                 secure = NoiseTransport.handshake(udp, server, profile);
