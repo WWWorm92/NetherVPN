@@ -113,6 +113,7 @@ private data class VpnUi(
     val ipv6Drops: Long = 0,
     val transportNetwork: String = "unselected",
     val udpMode: String = "unselected",
+    val tunOrder: String = "unknown",
     val networkBeforeTun: String = "unknown",
     val networkAfterTun: String = "unknown",
     val socketBeforeTun: String = "unknown",
@@ -298,6 +299,7 @@ class MainActivity : ComponentActivity() {
             p.getLong("ipv6_drops", 0),
             p.getString("transport_network", "unselected") ?: "unselected",
             p.getString("udp_mode", "unselected") ?: "unselected",
+            p.getString("tun_order", "unknown") ?: "unknown",
             p.getString("network_before_tun", "unknown") ?: "unknown",
             p.getString("network_after_tun", "unknown") ?: "unknown",
             p.getString("socket_before_tun", "unknown") ?: "unknown",
@@ -368,6 +370,7 @@ class MainActivity : ComponentActivity() {
             appendLine("full_tunnel=${profile.full}")
             appendLine("udp_underlying_network=${vpn.transportNetwork}")
             appendLine("udp_socket_mode=${vpn.udpMode}")
+            appendLine("tun_order=${vpn.tunOrder}")
             appendLine("cellular_bind_requested=${profile.bindMobileUdp}")
             appendLine("advertise_underlying_requested=${profile.advertiseUnderlying}")
             appendLine("underlying_advertisement=${vpn.underlyingAdvertisement}")
