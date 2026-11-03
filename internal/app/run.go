@@ -112,6 +112,12 @@ func RunClient(ctx context.Context,c Config) error {
  // Validate credentials and endpoint before changing any host routing.
  if _,_,_,err:=c.validate();err!=nil{return err}
  if _,err:=net.ResolveUDPAddr("udp",c.Peer);err!=nil{return fmt.Errorf("client: invalid server endpoint: %w",err)}
+ // An existing interface belongs to another running VPN instance or a
+ // persistent TUN. Refuse host-wide route changes before the new client
+ // can take ownership: TUNSETIFF would otherwise fail after handshake.
+ if iface,err:=net.InterfaceByName(c.Interface);err==nil{
+  return fmt.Errorf("client: interface %s already exists (index %d); stop the previous VPN process or use a different TUN name",c.Interface,iface.Index)
+ }
  var controller *routing.Controller
  if c.FullTunnel {
   host,_,err:=net.SplitHostPort(c.Peer)
