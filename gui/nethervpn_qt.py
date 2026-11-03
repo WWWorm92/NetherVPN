@@ -10,7 +10,7 @@ import time
 import shutil
 
 from PySide6.QtCore import Qt, QTimer, QThread, Signal, QRectF, QEasingCurve, QPropertyAnimation, Property
-from PySide6.QtGui import QColor, QPainter, QPen, QFont, QIcon, QConicalGradient
+from PySide6.QtGui import QColor, QPainter, QPen, QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication, QWidget, QMainWindow, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QFrame, QStackedWidget, QListWidget, QLineEdit, QComboBox,
@@ -106,6 +106,8 @@ class Ring(QWidget):
     progress = Property(float, get_progress, set_progress)
 
     def state(self, title, subtitle, color):
+        if self.title == title and self.subtitle == subtitle and self.color == QColor(color):
+            return
         self.title, self.subtitle, self.color = title, subtitle, QColor(color)
         self.animation.stop()
         self.animation.setStartValue(self._progress)
