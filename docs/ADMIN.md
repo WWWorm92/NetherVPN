@@ -1,41 +1,56 @@
-# NetherVPN server — interactive client management
+# NetherVPN — server-side universal client manager
 
-Run **one command** on the server:
+Run one command as root:
 
 ```bash
 sudo nether-admin
 ```
 
-The wizard asks for the device name, platform (Android or Linux), full-vs-split
-IPv4 routing, the public IPv4/UDP server endpoint, and DNS for full tunnel.
-If the outgoing network IP is public, it is offered as a default; on a NATed
-host you must supply the public NAT address manually. At the end it shows the
-choices, asks before creating files, and asks separately whether to restart
-the service to activate the new client.
+A Russian terminal menu offers:
+1. Create a client.
+2. List authorized clients.
+3. Revoke a client.
+4. Display server information without private keys.
+5. Exit.
 
-The wizard never prints private keys. The generated profile is saved at
-`/etc/nethervpn/clients/<name>.conf` with permissions 0600; its public
-identity is registered in `/etc/nethervpn/peers/<name>.conf`. The server keeps
-only public keys in its registry.
+Creating a client asks for **only** the device name and publicly reachable
+numeric IPv4/UDP endpoint. The public address is suggested from the server's
+bind/outbound address when possible (verify when behind NAT or using multiple
+IP addresses). The manager generates X25519 keys, assigns the first free tunnel
+IPv4, writes the 0600 secret-bearing profile to
+`/etc/nethervpn/clients/NAME.conf`, and registers only the public key in
+`/etc/nethervpn/peers/NAME.conf`. Finally, it asks whether to restart the
+server to activate or revoke a client (active sessions briefly disconnect).
 
-The same profile works on Android 0.3+ and Linux full-tunnel client, with
-`FullTunnel = true|false` and numeric IPv4 `DNS`. Use distinct profiles per
-device.
+**No Android/Linux client types. No Full/Split Tunnel or DNS in server profiles.**
+A universal `.conf` can be imported into either app. Each app stores and
+applies traffic and DNS options **locally**, without requiring new keys.
 
-Non-interactive server management remains possible:
+The generated profile uses this format:
+
+```ini
+[Interface]
+Name = nvpn0
+PrivateKey = <unique 64-character private key>
+Address = 10.77.0.3/32
+MTU = 1280
+
+[Peer]
+PublicKey = <server public key>
+Endpoint = 77.221.132.76:51830
+AllowedIPs = 10.77.0.1
+```
+
+Non-interactive administration:
 
 ```bash
-sudo nether-admin create -name android -type android -mode full -endpoint 77.221.132.76:51830
-sudo nether-admin create -name laptop -type linux -mode full -endpoint 77.221.132.76:51830 -dns 9.9.9.9
+sudo nether-admin create -name laptop -endpoint 77.221.132.76:51830
 sudo nether-admin list
-sudo nether-admin revoke -name android
+sudo nether-admin revoke -name laptop
 sudo systemctl restart nethervpn-server
 ```
 
-A full-tunnel server also needs IPv4 forwarding/NAT. See
-[Full-tunnel server setup](FULL-TUNNEL.md). Do not send private client
-profiles to chats, GitHub, issue trackers or public cloud folders. Share via
-an encrypted channel, and remove stale exports when no longer needed.
-
-Important: the service must be restarted to add/revoke peers, temporarily
-interrupting existing encrypted sessions. The wizard asks before doing so.
+Store and transfer private profiles safely. Do not post a private key to
+GitHub/issues/chat or reuse the same profile simultaneously on different
+devices. The server needs explicit NAT/IPv4 forwarding for Full Tunnel
+([server guide](FULL-TUNNEL.md)).
