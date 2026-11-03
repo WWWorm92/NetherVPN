@@ -37,6 +37,8 @@ public final class NetherVpnService extends VpnService {
     private volatile long connectedSinceElapsed = 0;
     private volatile String phase = "disconnected";
     private volatile String lastError = "";
+    private volatile String stage = "idle";
+    private volatile String failedStage = "";
     private volatile boolean running;
     private Thread worker;
     private DatagramSocket socket;
@@ -48,6 +50,7 @@ public final class NetherVpnService extends VpnService {
         NotificationManager manager = getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(CHANNEL,
                 "NetherVPN connection", NotificationManager.IMPORTANCE_LOW));
+        stage = "idle";
         publish("Не подключено", "disconnected");
     }
 
@@ -80,6 +83,8 @@ public final class NetherVpnService extends VpnService {
             droppedPackets.set(0);
             connectedSinceElapsed = 0;
             lastError = "";
+            failedStage = "";
+            stage = "start";
             worker = new Thread(this::connectionLoop, "NetherVPN-worker");
             worker.start();
         }
@@ -108,6 +113,8 @@ public final class NetherVpnService extends VpnService {
                 .putString("state", state)
                 .putString("phase", newPhase)
                 .putString("last_error", lastError)
+                .putString("stage", stage)
+                .putString("failed_stage", failedStage)
                 .putLong("since_elapsed", connectedSinceElapsed)
                 .putLong("updated_elapsed", SystemClock.elapsedRealtime())
                 .putLong("tx", bytesUp.get())
@@ -116,6 +123,13 @@ public final class NetherVpnService extends VpnService {
                 .apply();
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (running) manager.notify(NOTIFICATION_ID, notification(state));
+    }
+
+    /** Keep diagnostic stages in SharedPreferences without persisting keys. */
+    private void step(String code, String description) {
+        stage = code;
+        Log.i("NetherVPN", "VPN stage: " + code);
+        publish(description, "connecting");
     }
 
     /** Rejected TUN packets are normal on dual-stack Android networks.
@@ -145,24 +159,28 @@ public final class NetherVpnService extends VpnService {
         while (running) {
             NoiseTransport secure = null;
             try {
+                step("profile", "Проверка конфигурации…");
                 VpnProfile profile = VpnProfile.parse(SecretStore.load(this));
                 ClientSettings settings = ClientSettings.load(this, profile);
                 if (settings.fullTunnel && (!profile.endpointHost.matches("[0-9.]+")
                     || profile.localBytes.length != 4))
                     throw new IOException("Полный туннель требует числовой IPv4-адрес сервера и клиента");
                 if (VpnService.prepare(this) != null) throw new IOException("Разрешение VPN отозвано");
+                step("endpoint", "Поиск адреса сервера…");
                 InetSocketAddress server = profile.endpoint();
                 if (server.isUnresolved()) throw new IOException("DNS: сервер не найден");
+                step("udp", "Открытие UDP-сокета…");
                 DatagramSocket udp = new DatagramSocket();
                 synchronized (lifecycleLock) { socket = udp; }
                 if (!protect(udp)) throw new IOException("Не удалось исключить UDP-сокет из VPN");
                 udp.connect(server);
-                publish("Noise IK: аутентификация…", "connecting");
+                step("noise_ik", "Noise IK: аутентификация…");
                 secure = NoiseTransport.handshake(udp, server, profile);
-                publish("Проверка зашифрованного обмена…", "connecting");
+                step("encrypted_ping", "Проверка зашифрованного обмена…");
                 awaitPong(udp, secure);
                 if (!running) break;
 
+                step("tun", "Создание интерфейса Android VPN…");
                 Builder builder = new Builder()
                         .setSession("NetherVPN")
                         .setMtu(profile.mtu)
@@ -182,12 +200,15 @@ public final class NetherVpnService extends VpnService {
                 synchronized (lifecycleLock) { tun = device; }
                 connectedSinceElapsed = SystemClock.elapsedRealtime();
                 lastError = "";
+                stage = "connected";
+                failedStage = "";
                 publish(settings.fullTunnel ? "Подключено · весь IPv4 через VPN" : "Подключено · только " + profile.peerIp, "connected");
                 delay = 1;
                 transfer(udp, secure, device, profile, settings.fullTunnel);
             } catch (Exception error) {
                 if (running) {
-                    lastError = "Ошибка VPN: " + concise(error);
+                    failedStage = stage;
+                    lastError = "Этап " + failedStage + ": " + concise(error);
                     Log.e("NetherVPN", "VPN connection failed: " + concise(error));
                     publish(lastError, "error");
                 }
@@ -197,6 +218,7 @@ public final class NetherVpnService extends VpnService {
             }
             if (running) {
                 connectedSinceElapsed = 0;
+                stage = "retry";
                 publish(lastError.isEmpty() ? "Переподключение через " + delay + " с"
                         : lastError + " · повтор через " + delay + " с", "reconnecting");
                 try { Thread.sleep(delay * 1000L); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
@@ -217,19 +239,33 @@ public final class NetherVpnService extends VpnService {
     }
 
     private void awaitPong(DatagramSocket udp, NoiseTransport secure) throws Exception {
-        send(udp, secure.seal(NoiseTransport.PING, NoiseTransport.PING.length));
-        long end = SystemClock.elapsedRealtime() + 5000;
+        // UDP can lose the first encrypted ping, particularly on mobile data.
+        // Every retry is encrypted with a new nonce, never reuses a ciphertext.
+        final long end = SystemClock.elapsedRealtime() + 6500;
+        long nextPing = 0;
         byte[] buffer = new byte[4096];
+        int received = 0;
         while (running && SystemClock.elapsedRealtime() < end) {
+            long now = SystemClock.elapsedRealtime();
+            if (now >= nextPing) {
+                send(udp, secure.seal(NoiseTransport.PING, NoiseTransport.PING.length));
+                nextPing = now + 1200;
+            }
             try {
-                udp.setSoTimeout(500);
+                udp.setSoTimeout(350);
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 udp.receive(packet);
+                received++;
                 byte[] plain = secure.open(buffer, packet.getLength());
-                if (Arrays.equals(plain, NoiseTransport.PONG)) return;
+                if (Arrays.equals(plain, NoiseTransport.PONG)) {
+                    Log.i("NetherVPN", "Authenticated encrypted ping/pong confirmed");
+                    return;
+                }
             } catch (java.net.SocketTimeoutException ignored) { }
         }
-        throw new IOException("Нет зашифрованного PONG от сервера");
+        throw new IOException(received == 0
+                ? "UDP: нет ответа на зашифрованный PING"
+                : "Ответ UDP получен, но PONG не прошёл проверку Noise");
     }
 
     private void transfer(DatagramSocket udp, NoiseTransport secure, ParcelFileDescriptor device,
