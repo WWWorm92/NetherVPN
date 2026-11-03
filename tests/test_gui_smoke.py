@@ -25,6 +25,9 @@ class CompactDesktopSmokeTest(unittest.TestCase):
                     self.assertTrue(app.connect_btn.winfo_exists())
                     self.assertTrue(app.profile_btn.winfo_exists())
                     self.assertTrue(app.status_badge.winfo_exists())
+                    self.assertEqual(app._app_icon.width(), 64)
+                    self.assertEqual(app._app_icon.height(), 64)
+                    self.assertEqual(app._header_icon.width(), 32)
                     self.assertIsNone(app.logbox)
 
                     conf = profiles / "laptop.conf"
