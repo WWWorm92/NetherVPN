@@ -12,6 +12,11 @@ import (
  "github.com/WWWorm92/NetherVPN/internal/profile"
 )
 
+func sharedReader(in io.Reader)*bufio.Reader{
+ if reader,ok:=in.(*bufio.Reader);ok{return reader}
+ return bufio.NewReader(in)
+}
+
 type provisionOptions struct {
  Name string
  Endpoint string
@@ -43,19 +48,11 @@ func ask(reader *bufio.Reader, out io.Writer, label, fallback string)(string,err
 // Wizard collects only configuration choices. The caller performs the
 // filesystem mutation and the optional, explicitly confirmed service restart.
 func wizard(in io.Reader,out io.Writer,config string,defaults provisionOptions)(provisionOptions,bool,error){
- reader:=bufio.NewReader(in)
+ reader:=sharedReader(in)
  fmt.Fprintln(out,"")
  fmt.Fprintln(out,"╔════════ NetherVPN · мастер создания клиента ════════╗")
  fmt.Fprintln(out,"Ключи будут созданы автоматически и сохранены с правами 0600.")
  var opts=defaults
- if opts.Name==""{
-  for {
-   name,e:=ask(reader,out,"Имя устройства (латиница, цифры, - или _)","android")
-   if e!=nil{return opts,false,e}
-   if peersNameValid(name){opts.Name=name;break}
-   fmt.Fprintln(out,"Недопустимое имя: используйте 1–48 символов [A-Za-z0-9_-].")
-  }
- }
  if opts.Platform==""{
   for {
    value,e:=ask(reader,out,"Тип устройства: 1 — Android, 2 — Linux","1")
@@ -66,6 +63,14 @@ func wizard(in io.Reader,out io.Writer,config string,defaults provisionOptions)(
    default:fmt.Fprintln(out,"Введите 1 или 2.");continue
    }
    break
+  }
+ }
+ if opts.Name==""{
+  for {
+   name,e:=ask(reader,out,"Имя устройства (латиница, цифры, - или _)",opts.Platform)
+   if e!=nil{return opts,false,e}
+   if peersNameValid(name){opts.Name=name;break}
+   fmt.Fprintln(out,"Недопустимое имя: используйте 1–48 символов [A-Za-z0-9_-].")
   }
  }
  if opts.Platform!="android"&&opts.Platform!="linux"{return opts,false,fmt.Errorf("unknown platform: %s",opts.Platform)}
@@ -104,6 +109,16 @@ func wizard(in io.Reader,out io.Writer,config string,defaults provisionOptions)(
    fmt.Fprintln(out,"Нужен числовой IPv4 DNS-сервера.")
   }
  } else if opts.DNS=="" {opts.DNS="1.1.1.1"}
+ // Compare the public endpoint with any explicit server bind address.
+ // A mismatch may be valid behind NAT, but it deserves operator attention.
+ if configuration,e:=profile.Load(config);e==nil && configuration.ListenAddress!="" &&
+    configuration.ListenAddress!="0.0.0.0"{
+  host,_,splitErr:=net.SplitHostPort(opts.Endpoint)
+  if splitErr==nil && host!=configuration.ListenAddress{
+   fmt.Fprintf(out,"ВНИМАНИЕ: сервер слушает %s, а профиль указывает %s. Проверьте NAT/переадресацию порта.\n",
+    configuration.ListenAddress,host)
+  }
+ }
  fmt.Fprintf(out,"\nУстройство: %s (%s)\nСервер: %s\nРежим: %s\n",
   opts.Name,opts.Platform,opts.Endpoint,map[bool]string{true:"Полный IPv4 + DNS",false:"Только адрес VPN-сервера"}[opts.FullTunnel])
  confirm,e:=ask(reader,out,"Создать профиль и зарегистрировать публичный ключ? да/нет","да")
