@@ -266,3 +266,12 @@ server selector, quiet mode shortcut and softly rounded navigation chips.
 The navy/ocean/mint visual language matches Android 0.7 without mirroring its
 mobile layout. Profiles, root helper, systemd, Full/Split and DNS behavior are
 unchanged. Launch from `python3 gui/nethervpn.py` after running the installer.
+
+## Wide desktop layout
+
+Linux uses a 930×720 desktop window with dedicated sidebar navigation,
+center connection dial, visible tunnel mode, real interface traffic counters,
+profile selector and diagnostics. It intentionally no longer looks like a
+stretched mobile client. The old polkit/systemd helper and profile storage
+are unchanged. The sidebar status reflects service state, not proof of full
+end-to-end connectivity.
