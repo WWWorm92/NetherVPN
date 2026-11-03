@@ -15,8 +15,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Resolve dependencies
-        run: go mod tidy
+      - name: Verify tracked Go module metadata
+        run: go mod tidy -diff
       - name: Formatting report
         run: gofmt -l ./cmd ./internal
       - name: Test
