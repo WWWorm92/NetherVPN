@@ -272,7 +272,7 @@ class App(tk.Tk):
 
     def open_about(self):
         messagebox.showinfo("О NetherVPN",
-                            "NetherVPN — экспериментальный VPN-клиент.\\n"
+                            "NetherVPN — экспериментальный VPN-клиент.\n"
                             "Noise IK · IPv4 · Linux.\\n"
                             "Для каждого устройства нужен отдельный профиль.")
 
