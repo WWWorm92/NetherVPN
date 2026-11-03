@@ -7,7 +7,7 @@ privacy-critical traffic or production systems.**
 
 ## Current capabilities
 
-- Linux gateway and Linux CLI/desktop (Tkinter) client with authenticated TUN.
+- Linux gateway and Linux CLI/desktop (Tkinter) client with authenticated TUN, opt-in full IPv4 tunnel, systemd-resolved DNS and policy-routing leak protection.
 - Android client with foreground Android VpnService, imported profiles, encrypted
   Keystore storage, keepalives, encrypted packet forwarding and reconnect.
 - Multiple independently authorized clients on one gateway; return packets are
