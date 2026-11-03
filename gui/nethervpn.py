@@ -2,6 +2,7 @@
 """NetherVPN Linux desktop client, backed by a privileged systemd service."""
 import configparser
 from client_preferences import encode, decode
+from app_icon import create_icon
 import threading
 import os
 from pathlib import Path
@@ -41,6 +42,9 @@ class App(tk.Tk):
         self.geometry("410x690")
         self.minsize(360, 580)
         self.configure(bg=BG)
+        # App switcher/titlebar icon matches the Linux SVG and Android launcher.
+        self._app_icon = create_icon(self)
+        self.iconphoto(True, self._app_icon)
         BASE.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(BASE, 0o700)
         self.process = None
@@ -98,7 +102,10 @@ class App(tk.Tk):
         """Single-screen compact client; advanced controls live in dialogs."""
         top = tk.Frame(self, bg=BG)
         top.pack(fill="x", padx=22, pady=(19, 9))
-        self.label(top, "◈  NetherVPN", 17, TEXT, "bold").pack(side="left")
+        self._header_icon = self._app_icon.subsample(2, 2)
+        tk.Label(top, image=self._header_icon, bg=BG, bd=0).pack(
+            side="left", padx=(0, 9))
+        self.label(top, "NetherVPN", 17, TEXT, "bold").pack(side="left")
         self.label(top, "LINUX  ·  BETA", 9, MUTED, "bold").pack(
             side="right", pady=(7, 0))
 
