@@ -429,12 +429,16 @@ class App(tk.Tk):
         threading.Thread(target=run, daemon=True).start()
 
     def finish_operation(self, callback, output=""):
+        # The systemd unit may have changed during pkexec: do not use the
+        # previous 3s cached state (or clear the newly connected profile).
+        self.last_service_poll = 0.0
         self.busy = False
         if output.strip():
             self.log(output.strip())
         callback()
 
     def fail_operation(self, message, callback=None):
+        self.last_service_poll = 0.0
         self.busy = False
         self.state.set("Ошибка управления подключением")
         self.log("Ошибка: " + message[:600])
