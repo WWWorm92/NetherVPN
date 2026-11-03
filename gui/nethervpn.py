@@ -215,7 +215,7 @@ class App(tk.Tk):
                       padx=(0, 10) if value == "full" else 0)
             radio = tk.Radiobutton(
                 cell, text=title, variable=self.mode_var, value=value,
-                indicatoron=False, bg=RAISED, fg=TEXT, selectcolor=RAISED,
+                indicatoron=False, bg=RAISED, fg=TEXT, selectcolor="#225d62",
                 activebackground="#23545b", activeforeground=TEXT,
                 font=("DejaVu Sans", 10, "bold"), relief="flat",
                 bd=0, padx=8, pady=8, cursor="hand2",
