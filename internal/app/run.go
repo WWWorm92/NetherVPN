@@ -118,6 +118,7 @@ func RunClient(ctx context.Context,c Config) error {
   if err!=nil{return fmt.Errorf("client: invalid full-tunnel endpoint: %w",err)}
   controller,err=routing.New(c.Interface,host,c.DNS)
   if err!=nil{return err}
+  if err=controller.SetLocalAddress(c.LocalAddress);err!=nil{return err}
   if err=controller.Prepare();err!=nil{return err}
   defer controller.Close()
   fmt.Println("client: full IPv4 tunnel enabled; server endpoint bypass active; IPv6 fail-closed")
