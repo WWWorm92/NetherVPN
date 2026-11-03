@@ -1,5 +1,7 @@
 package net.nether.vpn;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -197,16 +199,30 @@ public final class NetherVpnService extends VpnService {
      * socket to the Wi-Fi/cellular network across Android network transitions.
      * Never bind the socket to another VPN.
      */
-    private Network upstreamNetwork() throws IOException {
-        ConnectivityManager cm = getSystemService(ConnectivityManager.class);
-        if (cm == null) throw new IOException("Служба ConnectivityManager недоступна");
-        Network preferred = cm.getActiveNetwork();
-        NetworkCapabilities preferredCaps = preferred == null ? null : cm.getNetworkCapabilities(preferred);
-        if (isPhysicalUpstream(preferredCaps)) return preferred;
-        for (Network candidate : cm.getAllNetworks()) {
-            if (isPhysicalUpstream(cm.getNetworkCapabilities(candidate))) return candidate;
+    private Network upstreamNetwork() {
+        // The manifest declares ACCESS_NETWORK_STATE, but older/mispackaged
+        // APKs may lack it. Do not break VPN transport because of diagnostics
+        // or optional upstream binding: protect() remains mandatory.
+        if (checkSelfPermission(Manifest.permission.ACCESS_NETWORK_STATE)
+                != PackageManager.PERMISSION_GRANTED) {
+            transportNetwork = "protected-only:no-network-state-permission";
+            Log.w("NetherVPN", "ACCESS_NETWORK_STATE missing in installed APK; using protected UDP only");
+            return null;
         }
-        throw new IOException("Не найдена физическая Wi-Fi/мобильная сеть для VPN UDP");
+        try {
+            ConnectivityManager cm = getSystemService(ConnectivityManager.class);
+            if (cm == null) return null;
+            Network preferred = cm.getActiveNetwork();
+            NetworkCapabilities preferredCaps = preferred == null ? null : cm.getNetworkCapabilities(preferred);
+            if (isPhysicalUpstream(preferredCaps)) return preferred;
+            for (Network candidate : cm.getAllNetworks()) {
+                if (isPhysicalUpstream(cm.getNetworkCapabilities(candidate))) return candidate;
+            }
+        } catch (SecurityException error) {
+            Log.w("NetherVPN", "Cannot inspect physical network; falling back to protected UDP");
+        }
+        transportNetwork = "protected-only:no-physical-upstream";
+        return null;
     }
 
     private static boolean isPhysicalUpstream(NetworkCapabilities caps) {
@@ -248,11 +264,19 @@ public final class NetherVpnService extends VpnService {
                 // A protected socket is necessary but not sufficient to retain
                 // the intended upstream physical network on all Android devices.
                 Network upstream = upstreamNetwork();
-                upstream.bindSocket(udp);
+                if (upstream != null) {
+                    try {
+                        upstream.bindSocket(udp);
+                        transportNetwork = transportName(getSystemService(ConnectivityManager.class)
+                                .getNetworkCapabilities(upstream));
+                    } catch (SecurityException | IOException error) {
+                        // Optional binding failed; keep mandatory VPN protection.
+                        Log.w("NetherVPN", "Physical network binding unavailable; using protect-only", error);
+                        transportNetwork = "protected-only:bind-unavailable";
+                    }
+                }
                 if (!protect(udp)) throw new IOException("Не удалось исключить UDP-сокет из VPN");
-                transportNetwork = transportName(getSystemService(ConnectivityManager.class)
-                        .getNetworkCapabilities(upstream));
-                Log.i("NetherVPN", "Protected VPN UDP bound to " + transportNetwork);
+                Log.i("NetherVPN", "VPN UDP path: " + transportNetwork);
                 udp.connect(server);
                 step("noise_ik", "Noise IK: аутентификация…");
                 secure = NoiseTransport.handshake(udp, server, profile);
@@ -279,7 +303,14 @@ public final class NetherVpnService extends VpnService {
                 if (device == null) throw new IOException("Android отказал в создании VPN TUN");
                 synchronized (lifecycleLock) { tun = device; }
                 // Advertise the physical transport explicitly to Android.
-                setUnderlyingNetworks(new Network[] { upstream });
+                if (upstream != null && transportNetwork.equals("wifi") ||
+                        upstream != null && transportNetwork.equals("cellular") ||
+                        upstream != null && transportNetwork.equals("ethernet")) {
+                    try { setUnderlyingNetworks(new Network[] { upstream }); }
+                    catch (SecurityException error) {
+                        Log.w("NetherVPN", "Cannot advertise underlying network; VPN remains active", error);
+                    }
+                }
                 connectedSinceElapsed = SystemClock.elapsedRealtime();
                 lastError = "";
                 stage = "connected";
