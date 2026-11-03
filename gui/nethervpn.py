@@ -317,26 +317,36 @@ class App(tk.Tk):
 
     def log(self, msg):
         line = time.strftime("%H:%M:%S") + "  " + msg.rstrip() + "\n"
-        self.logbox.configure(state="normal")
-        self.logbox.insert("end", line)
-        self.logbox.see("end")
-        self.logbox.configure(state="disabled")
+        self.log_history.append(line)
+        # Bound memory without discarding useful recent diagnostics.
+        if len(self.log_history) > 250:
+            self.log_history = self.log_history[-200:]
+        if self.logbox is not None and self.logbox.winfo_exists():
+            self.logbox.configure(state="normal")
+            self.logbox.insert("end", line)
+            self.logbox.see("end")
+            self.logbox.configure(state="disabled")
 
     def refresh(self):
-        name = self.selected_name
-        self.items = sorted(p for p in BASE.glob("*.conf") if p.is_file() and not p.is_symlink())
-        self.listbox.delete(0, "end")
-        for p in self.items:
-            self.listbox.insert("end", p.stem)
-        for i, p in enumerate(self.items):
-            if p.name == name:
-                self.listbox.selection_set(i)
-                self.listbox.activate(i)
+        previous = self.selected_name
+        self.items = sorted(p for p in BASE.glob("*.conf")
+                            if p.is_file() and not p.is_symlink())
+        if previous not in {p.name for p in self.items}:
+            self.selected_name = self.items[0].name if self.items else None
+        if self.profile_list is not None and self.profile_list.winfo_exists():
+            self.profile_list.delete(0, "end")
+            for idx, item in enumerate(self.items):
+                self.profile_list.insert("end", item.stem)
+                if item.name == self.selected_name:
+                    self.profile_list.selection_set(idx)
         self.on_select()
 
     def selected(self):
-        sel = self.listbox.curselection()
-        return self.items[sel[0]] if sel and sel[0] < len(self.items) else None
+        if self.selected_name:
+            for item in self.items:
+                if item.name == self.selected_name:
+                    return item
+        return None
 
     @staticmethod
     def preferences_path(path):
@@ -353,30 +363,31 @@ class App(tk.Tk):
 
     def refresh_mode_label(self):
         if self.mode_var.get() == "full":
-            self.mode_text.set("Весь IPv4 через VPN · DNS " + self.dns_var.get()
-                               + " · IPv6 блокируется")
+            self.mode_text.set("Весь IPv4 через VPN   ⌄")
         else:
-            self.mode_text.set("Только VPN-сервер · интернет без изменений")
+            self.mode_text.set("Раздельный туннель   ⌄")
         self.refresh_mode_buttons()
 
     def on_select(self, _event=None):
         path = self.selected()
         if path:
-            self.selected_name = path.name
             try:
                 peer, _, _, _ = profile_meta(path)
                 mode, dns, auto = self.load_choices(path)
                 self.endpoint.set(peer)
+                self.profile_title.set(path.stem + "   ⌄")
                 self.mode_var.set(mode)
                 self.dns_var.set(dns)
                 self.autostart_var.set(auto)
                 self.refresh_mode_label()
             except (OSError, ValueError, configparser.Error) as exc:
                 self.endpoint.set("Ошибка конфигурации")
+                self.profile_title.set(path.stem + "   ⌄")
                 self.log(str(exc))
-        elif not self.active:
-            self.endpoint.set("Выберите профиль")
-            self.mode_text.set("Выберите профиль")
+        else:
+            self.profile_title.set("Добавить сервер   ＋")
+            self.endpoint.set("Профиль ещё не загружен")
+            self.refresh_mode_label()
 
     def save_settings(self, notify=True):
         profile = self.selected()
@@ -444,8 +455,8 @@ class App(tk.Tk):
         path = self.selected()
         if not path:
             return
-        if self.active == path:
-            messagebox.showwarning("NetherVPN", "Отключите VPN перед удалением активного профиля")
+        if self.active == path or self.service_is_running():
+            messagebox.showwarning("NetherVPN", "Отключите VPN перед удалением профиля")
             return
         if messagebox.askyesno("Удалить профиль", "Удалить " + path.stem + "?"):
             path.unlink()
