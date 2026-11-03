@@ -136,6 +136,7 @@ class App(tk.Tk):
         self.connect_btn = self.button(actions, "Подключить", self.connect, True)
         self.connect_btn.pack(side="left", padx=(0, 9))
         self.button(actions, "Отключить", self.disconnect).pack(side="left")
+        self.button(actions, "Проверить", self.inspect_connection).pack(side="left", padx=(9, 0))
         stats = tk.Frame(right, bg=PANEL)
         stats.pack(fill="x", padx=24, pady=(24, 14))
         for title, var in (("ОТПРАВЛЕНО", self.tx), ("ПОЛУЧЕНО", self.rx), ("ВРЕМЯ", self.timing)):
@@ -378,6 +379,24 @@ class App(tk.Tk):
             self.state.set("Не подключено")
             self.log("Служба NetherVPN остановлена")
         self.privileged(["disconnect"], stopped)
+
+    def inspect_connection(self):
+        """Check systemd and IPv4 route without additional authorization."""
+        try:
+            result = subprocess.run(
+                ["systemctl", "show", "nethervpn-client.service",
+                 "--property=ActiveState", "--property=SubState"],
+                text=True, capture_output=True, timeout=3, check=False)
+            self.log("systemd: " + result.stdout.strip().replace("\n", "; "))
+            if self.mode_var.get() == "full":
+                route = subprocess.run(
+                    ["ip", "-4", "route", "get", "1.1.1.1"],
+                    text=True, capture_output=True, timeout=3, check=False)
+                self.log("Маршрут IPv4: " + (route.stdout or route.stderr).strip()[:300])
+                if " dev nvpn0 " not in " " + route.stdout + " ":
+                    self.log("Внимание: маршрут пока не через nvpn0. Проверьте журнал nethervpn-client и NAT сервера.")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            self.log("Диагностика: " + str(exc))
 
     def read_log(self):
         if not self.logfile:
