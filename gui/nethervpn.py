@@ -17,12 +17,12 @@ BASE = Path.home() / ".config" / "nethervpn" / "profiles"
 APP_ROOT = Path(__file__).resolve().parent.parent
 CLIENT = APP_ROOT / "bin" / "nether-client"
 HELPER = "/usr/local/libexec/nether-desktop-helper"
-BG = "#0a121f"
-PANEL = "#142233"
-TEXT = "#f1f7ff"
-MUTED = "#9db3c9"
-ACCENT = "#3ad9b8"
-RAISED = "#1d3045"
+BG = "#101115"
+PANEL = "#1d1e24"
+TEXT = "#f6f7f9"
+MUTED = "#a1a4ae"
+ACCENT = "#ffb15c"
+RAISED = "#292b33"
 AMBER = "#ffc067"
 ERROR = "#ff7282"
 
@@ -113,7 +113,7 @@ class App(tk.Tk):
         self.outer_ring = self.connect_btn.create_oval(
             12, 12, 234, 234, outline=RAISED, width=4)
         self.inner_ring = self.connect_btn.create_oval(
-            18, 18, 228, 228, outline="#384354", width=1)
+            18, 18, 228, 228, outline="#353941", width=1)
         self.power_text = self.connect_btn.create_text(
             123, 118, text="Подключить", fill=TEXT,
             font=("DejaVu Sans", 16, "bold"), anchor="center")
@@ -645,7 +645,7 @@ class App(tk.Tk):
             title = "Отключить"
             subtitle = "Ожидание туннеля"
         else:
-            color = "#536276"
+            color = "#59606e"
             title = "Подключить"
             subtitle = "Нажмите для включения"
         self.connect_btn.itemconfigure(self.outer_ring, outline=color)
