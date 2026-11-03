@@ -66,7 +66,9 @@ Android now uses a separately tested, pure-Java `PacketPolicy`:
 - Genuine UDP/TUN I/O errors, failed handshake or peer keepalive timeout can
   still trigger reconnection, with a visible state and bounded retry delay.
 - The connection panel reflects the service's own lifecycle phase, not just
-  whether Android displays a VPN icon.
+  whether Android displays a VPN icon. Authenticated keepalive replies refresh
+  a heartbeat; stale status (more than 30 seconds without an update) is shown
+  as unknown rather than a green "connected" indication.
 
 The gateway still needs **IPv4 forwarding, NAT and corresponding firewall
 rules** for Full mode: [gateway guide](../docs/FULL-TUNNEL.md). There is no
