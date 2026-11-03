@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- The mark stays inside Android's adaptive icon safe zone (central 66dp). -->
+    <path android:fillColor="#24252B"
+        android:pathData="M84,54 A30,30 0,1 1,24 54 A30,30 0,1 1,84 54 Z"/>
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#6A4A33"
+        android:strokeWidth="1.5"
+        android:pathData="M84,54 A30,30 0,1 1,24 54 A30,30 0,1 1,84 54"/>
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFB15C"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M84,54 A30,30 0,1 1,24 54 A30,30 0,1 1,84 54"/>
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFB15C"
+        android:strokeWidth="7.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M41,68 L41,40 L67,68 L67,40"/>
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFE1B4"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M41,40 L67,68"/>
+</vector>
