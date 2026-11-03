@@ -1,4 +1,8 @@
-plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
+}
 
 android {
     namespace = "net.nether.vpn"
@@ -8,9 +12,11 @@ android {
         applicationId = "net.nether.vpn"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.8-alpha"
+        versionCode = 10
+        versionName = "0.9-alpha"
     }
+
+    buildFeatures { compose = true }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -23,7 +29,13 @@ android {
 }
 
 dependencies {
+    implementation(platform("androidx.compose:compose-bom:2024.10.01"))
+    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material3:material3")
+    debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
-    // Established Noise Protocol reference implementation; no custom crypto primitives.
     implementation("org.signal.forks:noise-java:0.1.1")
 }
