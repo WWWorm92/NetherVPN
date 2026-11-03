@@ -2,6 +2,9 @@ package net.nether.vpn
 
 import android.Manifest
 import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -97,7 +100,10 @@ private data class VpnUi(
     val up: Long = 0,
     val down: Long = 0,
     val dropped: Long = 0,
-    val elapsed: Long = 0
+    val elapsed: Long = 0,
+    val stage: String = "idle",
+    val failedStage: String = "",
+    val lastError: String = ""
 ) {
     val active get() = phase == "connected"
     val pending get() = phase == "connecting" || phase == "reconnecting"
@@ -184,7 +190,8 @@ class MainActivity : ComponentActivity() {
                     onPaste = { if (canEditProfile()) modal = "paste" },
                     onDelete = { if (canEditProfile()) modal = "delete" },
                     onSave = { full, dns -> saveOptions(full, dns) },
-                    onSystemVpn = { startActivity(Intent(Settings.ACTION_VPN_SETTINGS)) }
+                    onSystemVpn = { startActivity(Intent(Settings.ACTION_VPN_SETTINGS)) },
+                    onCopyDiagnostics = { copyDiagnostics() }
                 )
                 if (modal == "paste") PasteDialog(
                     onDismiss = { modal = "" },
@@ -263,7 +270,10 @@ class MainActivity : ComponentActivity() {
                     ?: p.getString("state", "Нет соединения").orEmpty()
             else p.getString("state", "Не подключено").orEmpty()
         vpn = VpnUi(phase, detail, p.getLong("tx", 0), p.getLong("rx", 0),
-            p.getLong("dropped", 0), secs)
+            p.getLong("dropped", 0), secs,
+            p.getString("stage", "idle") ?: "idle",
+            p.getString("failed_stage", "") ?: "",
+            p.getString("last_error", "") ?: "")
     }
 
     private fun canEditProfile(): Boolean {
@@ -311,6 +321,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun copyDiagnostics() {
+        val safe = buildString {
+            appendLine("NetherVPN Android diagnostic")
+            appendLine("phase=${vpn.phase}")
+            appendLine("stage=${vpn.stage}")
+            appendLine("failed_stage=${vpn.failedStage}")
+            appendLine("error=${vpn.lastError}")
+            appendLine("detail=${vpn.detail}")
+            appendLine("rx=${vpn.down} tx=${vpn.up} dropped=${vpn.dropped}")
+            appendLine("profile_imported=${profile.available}")
+            appendLine("full_tunnel=${profile.full}")
+            // Never include private keys, server public keys, or raw .conf.
+        }
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("NetherVPN diagnostic", safe))
+        toast("Диагностика скопирована без секретных ключей")
+    }
+
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
@@ -337,7 +365,8 @@ private fun NetherScreen(
     onPaste: () -> Unit,
     onDelete: () -> Unit,
     onSave: (Boolean, String) -> Boolean,
-    onSystemVpn: () -> Unit
+    onSystemVpn: () -> Unit,
+    onCopyDiagnostics: () -> Unit
 ) {
     Box(Modifier.fillMaxSize().background(
         Brush.verticalGradient(listOf(Night, Navy, Night))
@@ -358,7 +387,7 @@ private fun NetherScreen(
                 when (selected) {
                     0 -> HomePage(vpn, profile, onPower, { onTab(1) }, { onTab(2) })
                     1 -> ProfilesPage(vpn, profile, onImport, onPaste, onDelete)
-                    else -> SettingsPage(profile, vpn, onSave, onSystemVpn)
+                    else -> SettingsPage(profile, vpn, onSave, onSystemVpn, onCopyDiagnostics)
                 }
                 Spacer(Modifier.height(18.dp))
                 Text("Noise IK  ·  IPv4  ·  Экспериментальная версия",
@@ -547,7 +576,8 @@ private fun ProfilesPage(vpn: VpnUi, profile: ProfileUi,
 
 @Composable
 private fun SettingsPage(profile: ProfileUi, vpn: VpnUi,
-                         onSave: (Boolean, String) -> Boolean, onSystemVpn: () -> Unit) {
+                         onSave: (Boolean, String) -> Boolean, onSystemVpn: () -> Unit,
+                         onCopyDiagnostics: () -> Unit) {
     Heading("Настройки", "Режим и DNS задаются на телефоне")
     var full by remember(profile.full, profile.host) { mutableStateOf(profile.full) }
     var dns by remember(profile.dns, profile.host) { mutableStateOf(profile.dns) }
@@ -576,6 +606,12 @@ private fun SettingsPage(profile: ProfileUi, vpn: VpnUi,
         colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Night)) {
         Text("Сохранить настройки", modifier = Modifier.padding(6.dp))
     }
+    ClickCard("ДИАГНОСТИКА",
+        "Этап: " + (if (vpn.failedStage.isNotBlank()) vpn.failedStage else vpn.stage),
+        if (vpn.lastError.isNotBlank()) vpn.lastError else vpn.detail,
+        onCopyDiagnostics)
+    Text("Нажмите карточку диагностики, чтобы скопировать безопасный отчёт.",
+        color = Secondary, fontSize = 11.sp)
     ClickCard("ANDROID", "Постоянное подключение",
         "Always-on и блокировка без VPN настраиваются в системе", onSystemVpn)
     Text("В полном туннеле IPv6 блокируется, а для выхода IPv4 в интернет " +
