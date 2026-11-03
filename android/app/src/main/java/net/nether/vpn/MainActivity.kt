@@ -74,11 +74,10 @@ class MainActivity : Activity() {
     private lateinit var modeTitle: TextView
 
 
-    private fun connectionSurface(color: Int) = GradientDrawable().apply {
-        orientation = GradientDrawable.Orientation.TL_BR
-        colors = intArrayOf(color, Color.rgb(33, 98, 107))
-        cornerRadius = dp(30).toFloat()
-    }
+    private fun connectionSurface(color: Int) = GradientDrawable(
+        GradientDrawable.Orientation.TL_BR,
+        intArrayOf(color, Color.rgb(33, 98, 107))
+    ).apply { cornerRadius = dp(30).toFloat() }
 
     private fun softCard(color: Int = card, radius: Int = 28) =
         shape(color, radius)
@@ -423,16 +422,16 @@ class MainActivity : Activity() {
             prefs.getString("last_error", prefs.getString("state", "Нет соединения"))
             else prefs.getString("state", "Не подключено")
         connectButton.text = when (phase) {
-            "connected" -> "Подключено"
-            "connecting" -> "Подключение…"
-            "reconnecting" -> "Восстановление…"
+            "connected" -> "Отключить VPN"
+            "connecting" -> "Отменить подключение"
+            "reconnecting" -> "Остановить попытки"
             "stale" -> "Сбросить VPN"
             "error" -> "Сбросить VPN"
             else -> "Подключить"
         }
-        connectButton.setTextColor(if (connected) amber else white)
-        connectButton.background = powerRing(
-            if (connected) amber else if (pending) amber else if (phase == "error") red else muted)
+        connectButton.setTextColor(navy)
+        connectButton.background = connectionSurface(
+            if (connected) mint else if (pending) amber else if (phase == "error") red else raised)
         connectButton.contentDescription = if (phase == "disconnected")
             "Подключить VPN" else "Отключить VPN"
         up.text = bytes(prefs.getLong("tx", 0))
