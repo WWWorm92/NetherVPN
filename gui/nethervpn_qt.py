@@ -312,7 +312,15 @@ class Window(QMainWindow):
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(19, 27, 19, 22)
         side.setSpacing(7)
-        logo = QHBoxLayout()\n        logo.setSpacing(12)\n        self.logo_mark = QLabel()\n        self.logo_mark.setFixedSize(39, 39)\n        self.logo_mark.setPixmap(self.windowIcon().pixmap(39, 39))\n        logo.addWidget(self.logo_mark)\n        logo.addWidget(label("NetherVPN", name="brand"))\n        logo.addStretch()\n        side.addLayout(logo)
+        logo = QHBoxLayout()
+        logo.setSpacing(12)
+        self.logo_mark = QLabel()
+        self.logo_mark.setFixedSize(39, 39)
+        self.logo_mark.setPixmap(self.windowIcon().pixmap(39, 39))
+        logo.addWidget(self.logo_mark)
+        logo.addWidget(label("NetherVPN", name="brand"))
+        logo.addStretch()
+        side.addLayout(logo)
         side.addSpacing(35)
         self.nav_buttons = []
         for title, page in (("⌂   Подключение", 0),
@@ -685,7 +693,8 @@ class Window(QMainWindow):
         else:
             title, subtitle, color = "Подключить", "Нажмите для включения", MUTED
         self.ring.state(title, subtitle, color)
-        self.status.setText("●  " + ("VPN-интерфейс активен" if iface else "Служба запущена" if running else "Не подключено"))\n        self.status.setStyleSheet("background: transparent; color: " + (MINT if iface else AMBER if running else MUTED))
+        self.status.setText("●  " + ("VPN-интерфейс активен" if iface else "Служба запущена" if running else "Не подключено"))
+        self.status.setStyleSheet("background: transparent; color: " + (MINT if iface else AMBER if running else MUTED))
         self.hint.setText("Интерфейс VPN активен" if iface else "Проверьте подключение" if running else "Выберите сервер и подключитесь")
         self.side_status.setText("●  Служба активна" if running else "●  Служба остановлена")
         if iface:
