@@ -35,6 +35,7 @@ class QtDesktopSmokeTest(unittest.TestCase):
                 try:
                     self.assertEqual(window.windowTitle(), "NetherVPN")
                     self.assertEqual(window.pages.count(), 5)
+                    self.assertFalse(window.windowIcon().isNull(), "NetherVPN icon should render")
                     self.assertFalse(window.current)
                     self.assertEqual(window.profile_label.text(), "Добавить сервер")
                     p = root / "laptop.conf"
@@ -46,6 +47,12 @@ class QtDesktopSmokeTest(unittest.TestCase):
                     window.refresh_profiles()
                     self.assertEqual(window.current, p)
                     self.assertIn("laptop", window.profile_label.text())
+                    window.go(1, window.nav_buttons[1][0])
+                    selected = [btn for btn, _ in window.nav_buttons if btn.property("active")]
+                    self.assertEqual(selected, [window.nav_buttons[1][0]])
+                    window.go(1, window.nav_buttons[2][0])
+                    selected = [btn for btn, _ in window.nav_buttons if btn.property("active")]
+                    self.assertEqual(selected, [window.nav_buttons[2][0]])
                     window.go(3)
                     self.assertEqual(window.pages.currentIndex(), 3)
                     window.mode_box.setCurrentIndex(0)
@@ -56,6 +63,11 @@ class QtDesktopSmokeTest(unittest.TestCase):
                     self.assertIn("DNS = 9.9.9.9", pref.read_text())
                     window.go(2)
                     self.assertEqual(window.pages.currentIndex(), 2)
+                    window.show()
+                    self.qtapp.processEvents()
+                    rendered = Path(tmp) / "nethervpn-qt-smoke.png"
+                    self.assertTrue(window.grab().save(str(rendered)))
+                    self.assertGreater(rendered.stat().st_size, 10000)
                     window.ring.state("Подключить", "Отключено", "#95b0c5")
                     self.assertEqual(window.ring.title, "Подключить")
                 finally:
