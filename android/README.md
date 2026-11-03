@@ -1,4 +1,4 @@
-# NetherVPN Android — 0.5 Alpha
+# NetherVPN Android — 0.6 Alpha
 
 **Experimental / unaudited VPN.** This is an Android VpnService implementation
 of the NetherVPN custom Noise IK protocol. Android 8+ (API 26+) is required.
