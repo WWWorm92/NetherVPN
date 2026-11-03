@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """NetherVPN Linux desktop client, backed by a privileged systemd service."""
 import configparser
-import ipaddress
+from client_preferences import encode, decode
 import threading
 import os
 from pathlib import Path
@@ -182,20 +182,12 @@ class App(tk.Tk):
 
     def load_choices(self, path):
         _, _, legacy_full, legacy_dns = profile_meta(path)
-        settings = configparser.ConfigParser(interpolation=None)
         pref = self.preferences_path(path)
         if pref.is_symlink():
             raise ValueError("Символическая ссылка настроек запрещена")
-        if pref.exists():
-            settings.read(pref, encoding="utf-8")
-        mode = settings.get("Client", "Mode",
-                            fallback="full" if legacy_full else "split")
-        dns = settings.get("Client", "DNS", fallback=legacy_dns)
-        auto = settings.getboolean("Client", "AutoConnect", fallback=False)
-        if mode not in ("full", "split"):
-            raise ValueError("Недопустимый режим в локальных настройках")
-        ipaddress.IPv4Address(dns)
-        return mode, dns, auto
+        content = pref.read_text(encoding="utf-8") if pref.exists() else ""
+        return decode(content, legacy_mode="full" if legacy_full else "split",
+                      legacy_dns=legacy_dns)
 
     def refresh_mode_label(self):
         if self.mode_var.get() == "full":
@@ -231,16 +223,11 @@ class App(tk.Tk):
             return None
         try:
             mode = self.mode_var.get()
-            if mode not in ("full", "split"):
-                raise ValueError("Выберите режим Full или Split")
-            dns = str(ipaddress.IPv4Address(self.dns_var.get().strip()))
-            if dns == "0.0.0.0":
-                raise ValueError("Нельзя использовать DNS 0.0.0.0")
+            dns = self.dns_var.get().strip()
+            text = encode(mode, dns, self.autostart_var.get())
             pref = self.preferences_path(profile)
             if pref.is_symlink():
                 raise ValueError("Нельзя перезаписать символическую ссылку")
-            text = "[Client]\\nMode = {}\\nDNS = {}\\nAutoConnect = {}\\n".format(
-                mode, dns, "true" if self.autostart_var.get() else "false")
             fd, tmp = tempfile.mkstemp(prefix=".prefs-", dir=str(BASE))
             try:
                 os.fchmod(fd, 0o600)
