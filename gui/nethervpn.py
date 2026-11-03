@@ -148,14 +148,28 @@ class App(tk.Tk):
                  font=("DejaVu Sans", 16, "bold")).pack(side="left", padx=(10, 0))
 
         def side_action(label, callback, selected=False):
-            btn = tk.Button(sidebar, text=label, command=callback, anchor="w",
-                            bg="#153e49" if selected else "#0c1828",
-                            activebackground="#214c5a", fg=ACCENT if selected else TEXT,
-                            activeforeground=TEXT, relief="flat", bd=0,
-                            font=("DejaVu Sans", 11, "bold" if selected else "normal"),
-                            padx=24, pady=14, cursor="hand2")
-            btn.pack(fill="x", padx=13, pady=3)
-            return btn
+            nav = tk.Canvas(sidebar, height=49, bg="#0c1828",
+                            bd=0, highlightthickness=0, takefocus=1,
+                            cursor="hand2")
+            nav.pack(fill="x", padx=13, pady=2)
+            shape = self.rounded_rectangle(
+                nav, 1, 2, 210, 47, 17,
+                fill="#153e49" if selected else "#0c1828", outline="")
+            title = nav.create_text(
+                25, 24, text=label, anchor="w",
+                fill=ACCENT if selected else TEXT,
+                font=("DejaVu Sans", 11, "bold" if selected else "normal"))
+            nav.bind("<Configure>", lambda event: nav.coords(
+                shape, *self._rounded_points(
+                    1, 2, max(36, event.width - 1), 47, 17)))
+            nav.bind("<Button-1>", lambda _e: callback())
+            nav.bind("<Return>", lambda _e: callback())
+            nav.bind("<space>", lambda _e: callback())
+            nav.bind("<Enter>", lambda _e: nav.itemconfigure(
+                shape, fill="#214c5a"))
+            nav.bind("<Leave>", lambda _e: nav.itemconfigure(
+                shape, fill="#153e49" if selected else "#0c1828"))
+            return nav
 
         side_action("⌂   Подключение", lambda: None, True)
         side_action("▤   Серверы", self.open_profiles)
