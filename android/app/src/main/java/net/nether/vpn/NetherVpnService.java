@@ -303,9 +303,9 @@ public final class NetherVpnService extends VpnService {
                 if (device == null) throw new IOException("Android отказал в создании VPN TUN");
                 synchronized (lifecycleLock) { tun = device; }
                 // Advertise the physical transport explicitly to Android.
-                if (upstream != null && transportNetwork.equals("wifi") ||
-                        upstream != null && transportNetwork.equals("cellular") ||
-                        upstream != null && transportNetwork.equals("ethernet")) {
+                if (upstream != null && (transportNetwork.equals("wifi")
+                        || transportNetwork.equals("cellular")
+                        || transportNetwork.equals("ethernet"))) {
                     try { setUnderlyingNetworks(new Network[] { upstream }); }
                     catch (SecurityException error) {
                         Log.w("NetherVPN", "Cannot advertise underlying network; VPN remains active", error);
