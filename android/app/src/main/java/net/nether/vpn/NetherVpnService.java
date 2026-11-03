@@ -20,8 +20,8 @@ import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Foreground, single-peer NetherVPN alpha. Routing is deliberately limited to
- * Peer.AllowedIPs (one host). Server does not implement general Internet NAT.
+ * Foreground NetherVPN alpha. Traffic policy is selected locally, independently
+ * of the server-issued identity profile. Internet full tunnel requires gateway NAT.
  */
 public final class NetherVpnService extends VpnService {
     public static final String CONNECT = "net.nether.vpn.CONNECT";
@@ -53,7 +53,12 @@ public final class NetherVpnService extends VpnService {
             stopSelf();
             return START_NOT_STICKY;
         }
-        if (intent == null || !CONNECT.equals(intent.getAction())) return START_NOT_STICKY;
+        // Android can start an Always-on VpnService without our CONNECT action.
+        // Only start after VPN consent and a previously imported identity.
+        if (intent != null && intent.getAction() != null &&
+                !CONNECT.equals(intent.getAction())) return START_NOT_STICKY;
+        if (!SecretStore.exists(this) || VpnService.prepare(this) != null)
+            return START_NOT_STICKY;
         startForeground(NOTIFICATION_ID, notification("Подключение…"));
         synchronized (lifecycleLock) {
             if (running) return START_NOT_STICKY;
@@ -107,6 +112,10 @@ public final class NetherVpnService extends VpnService {
             NoiseTransport secure = null;
             try {
                 VpnProfile profile = VpnProfile.parse(SecretStore.load(this));
+                ClientSettings settings = ClientSettings.load(this, profile);
+                if (settings.fullTunnel && (!profile.endpointHost.matches("[0-9.]+")
+                    || profile.localBytes.length != 4))
+                    throw new IOException("Полный туннель требует числовой IPv4-адрес сервера и клиента");
                 if (VpnService.prepare(this) != null) throw new IOException("Разрешение VPN отозвано");
                 InetSocketAddress server = profile.endpoint();
                 if (server.isUnresolved()) throw new IOException("DNS: сервер не найден");
@@ -125,9 +134,9 @@ public final class NetherVpnService extends VpnService {
                         .setMtu(profile.mtu)
                         .addAddress(profile.localIp, profile.localPrefix)
                         .setBlocking(true);
-                if (profile.fullTunnel) {
+                if (settings.fullTunnel) {
                     // All IPv4/DNS goes to the VPN, including public DNS resolvers.
-                    builder.addRoute("0.0.0.0", 0).addDnsServer(profile.dns);
+                    builder.addRoute("0.0.0.0", 0).addDnsServer(settings.dns);
                     // Fail closed for IPv6 until server IPv6 forwarding exists:
                     // catch the default IPv6 route, then discard IPv6 from TUN.
                     builder.addAddress("fd77:77::2", 128).addRoute("::", 0);
@@ -137,9 +146,9 @@ public final class NetherVpnService extends VpnService {
                 ParcelFileDescriptor device = builder.establish();
                 if (device == null) throw new IOException("Android отказал в создании VPN TUN");
                 synchronized (lifecycleLock) { tun = device; }
-                publish(profile.fullTunnel ? "Подключено · весь IPv4 через VPN" : "Подключено · только " + profile.peerIp);
+                publish(settings.fullTunnel ? "Подключено · весь IPv4 через VPN" : "Подключено · только " + profile.peerIp);
                 delay = 1;
-                transfer(udp, secure, device, profile);
+                transfer(udp, secure, device, profile, settings.fullTunnel);
             } catch (Exception error) {
                 if (running) publish("Ошибка: " + concise(error));
             } finally {
@@ -182,7 +191,7 @@ public final class NetherVpnService extends VpnService {
     }
 
     private void transfer(DatagramSocket udp, NoiseTransport secure, ParcelFileDescriptor device,
-                          VpnProfile profile) throws Exception {
+                          VpnProfile profile, boolean fullTunnel) throws Exception {
         FileInputStream input = new FileInputStream(device.getFileDescriptor());
         FileOutputStream output = new FileOutputStream(device.getFileDescriptor());
         final java.util.concurrent.atomic.AtomicReference<Throwable> outgoingError =
@@ -230,7 +239,7 @@ public final class NetherVpnService extends VpnService {
                         lastPong = SystemClock.elapsedRealtime();
                         continue;
                     }
-                    if (!validFromPeer(plain, profile)) continue;
+                    if (!validFromPeer(plain, profile, fullTunnel)) continue;
                     output.write(plain);
                     bytesDown.addAndGet(plain.length);
                     updateStats();
@@ -244,10 +253,10 @@ public final class NetherVpnService extends VpnService {
     }
 
     /** Authenticated encrypted return packets must be IPv4 destined to this client. */
-    private static boolean validFromPeer(byte[] packet, VpnProfile profile) {
+    private static boolean validFromPeer(byte[] packet, VpnProfile profile, boolean fullTunnel) {
         if (!validIPv4(packet, packet.length)) return false;
         if (!addressEquals(packet, 16, profile.localBytes)) return false;
-        return profile.fullTunnel || addressEquals(packet, 12, profile.peerBytes);
+        return fullTunnel || addressEquals(packet, 12, profile.peerBytes);
     }
 
     /** Drop IPv6 and reject any source address not assigned by the server. */
