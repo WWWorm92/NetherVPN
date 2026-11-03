@@ -35,6 +35,8 @@ class QtDesktopSmokeTest(unittest.TestCase):
                 try:
                     self.assertEqual(window.windowTitle(), "NetherVPN")
                     self.assertEqual(window.pages.count(), 5)
+                    self.assertEqual(len(window.nav_buttons), 5)
+                    self.assertFalse(any("Сервер" in btn.text() for btn, _ in window.nav_buttons))
                     self.assertFalse(window.windowIcon().isNull(), "NetherVPN icon should render")
                     self.assertFalse(window.current)
                     self.assertEqual(window.profile_label.text(), "Добавить сервер")
@@ -50,9 +52,7 @@ class QtDesktopSmokeTest(unittest.TestCase):
                     window.go(1, window.nav_buttons[1][0])
                     selected = [btn for btn, _ in window.nav_buttons if btn.property("active")]
                     self.assertEqual(selected, [window.nav_buttons[1][0]])
-                    window.go(1, window.nav_buttons[2][0])
-                    selected = [btn for btn, _ in window.nav_buttons if btn.property("active")]
-                    self.assertEqual(selected, [window.nav_buttons[2][0]])
+                    self.assertIn("Профили", window.nav_buttons[1][0].text())
                     window.go(3)
                     self.assertEqual(window.pages.currentIndex(), 3)
                     window.mode_box.setCurrentIndex(0)
