@@ -238,7 +238,8 @@ class Ring(QWidget):
         p.setPen(QPen(self.color, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         glyph = QRectF(center.x()-19, center.y()-37, 38, 38)
         p.drawArc(glyph, 130*16, 280*16)
-        p.drawLine(QPointF(center.x(), center.y()-44),\n                   QPointF(center.x(), center.y()-22))
+        p.drawLine(QPointF(center.x(), center.y()-44),
+                   QPointF(center.x(), center.y()-22))
         p.setPen(QColor(TEXT))
         font = QFont("DejaVu Sans", 12)
         font.setBold(True)
