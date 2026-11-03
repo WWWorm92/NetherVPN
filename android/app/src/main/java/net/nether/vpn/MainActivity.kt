@@ -150,6 +150,10 @@ class MainActivity : Activity() {
         info.addView(up)
         info.addView(text("    •    ", 11f, muted))
         info.addView(down)
+        info.isClickable = true
+        info.isFocusable = true
+        info.contentDescription = "Показать статистику VPN"
+        info.setOnClickListener { statisticsDialog() }
         main.addView(info)
         space(main, 5)
         main.addView(uptime)
@@ -200,7 +204,7 @@ class MainActivity : Activity() {
                 minimumHeight = dp(45)
                 setOnClickListener { onTap() }
             }
-        navigation.addView(menuAction("⌂  Главная") { statisticsDialog() },
+        navigation.addView(menuAction("⌂  Главная") { },
             LinearLayout.LayoutParams(0, dp(47), 1f))
         navigation.addView(menuAction("⚙  Настройки") { settingsDialog() },
             LinearLayout.LayoutParams(0, dp(47), 1f))
@@ -225,6 +229,10 @@ class MainActivity : Activity() {
     }
 
     private fun importDocument() {
+        if (phase != "disconnected") {
+            Toast.makeText(this, "Сначала отключите VPN", Toast.LENGTH_LONG).show()
+            return
+        }
         startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
@@ -237,7 +245,7 @@ class MainActivity : Activity() {
             arrayOf("Импортировать новый .conf", "Вставить конфигурацию", "Удалить профиль")
         else arrayOf("Импортировать .conf", "Вставить конфигурацию")
         AlertDialog.Builder(this)
-            .setTitle("Серверы")
+            .setTitle("Профиль сервера")
             .setItems(actions) { _, selected ->
                 when (selected) {
                     0 -> importDocument()
@@ -430,6 +438,10 @@ class MainActivity : Activity() {
     }
 
     private fun paste() {
+        if (phase != "disconnected") {
+            Toast.makeText(this, "Сначала отключите VPN", Toast.LENGTH_LONG).show()
+            return
+        }
         val edit = EditText(this).apply {
             minLines = 7
             maxLines = 12
