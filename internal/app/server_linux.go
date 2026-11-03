@@ -26,6 +26,8 @@ type activePeer struct {
  source netip.Addr
  secure *session.Session
  authenticatedPings uint64
+ inboundData uint64
+ outboundData uint64
 }
 type cachedInit struct {
  response []byte
@@ -64,6 +66,8 @@ func serveContinuous(ctx context.Context,c Config,identity noise.DHKey,authorize
    mu.Lock()
    peer:=byIP[destination]
    if peer!=nil {
+    peer.outboundData++
+    if peer.outboundData==1 { log.Printf("server: first IPv4 response routed into tunnel for client %s (%d B)",destination,n) }
     payload,e:=peer.secure.Seal(buffer[:n])
     if e==nil{_,e=conn.WriteToUDP(payload,peer.addr)}
     if e!=nil{log.Printf("server: send to %s failed: %v",destination,e)}
@@ -154,6 +158,8 @@ func serveContinuous(ctx context.Context,c Config,identity noise.DHKey,authorize
    mu.Unlock()
    continue
   }
+  p.inboundData++
+  if p.inboundData==1 { log.Printf("server: first decrypted IPv4 packet from client %s accepted (%d B)",p.source,len(plain)) }
   mu.Unlock()
   if _,e=device.Write(plain);e!=nil{
    if errors.Is(e,context.Canceled)||ctx.Err()!=nil{return nil}
