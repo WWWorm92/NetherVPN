@@ -26,14 +26,14 @@ def _pixel(x, y):
     if not _rounded_square(x, y):
         return None
     # Surface and subtle raised panel inside the metal-orange tunnel ring.
-    base = (29, 30, 36) if y < 30 else (22, 23, 29)
+    base = (25, 43, 62) if y < 30 else (16, 27, 41)
     distance = hypot(x - 32.0, y - 32.0)
     if distance < 21.3:
-        base = (30, 30, 37)
+        base = (20, 44, 60)
     if 20.8 <= distance <= 23.1:
-        base = (255, 177, 92)
+        base = (118, 217, 199)
     if 18.9 <= distance < 20.8:
-        base = (86, 60, 43)
+        base = (49, 91, 103)
     # The N is three continuous strokes like the vector launcher asset.
     segments = [
         (22.0, 42.0, 22.0, 22.0),
@@ -41,7 +41,7 @@ def _pixel(x, y):
         (42.0, 42.0, 42.0, 22.0),
     ]
     if min(_distance_to_segment(x, y, *line) for line in segments) <= 2.6:
-        base = (255, 186, 104)
+        base = (137, 231, 210)
     return base
 
 
@@ -63,7 +63,7 @@ def create_icon(master, size=64):
             opaque = [c for c in samples if c is not None]
             if not opaque:
                 transparent.append((x, y))
-                cells.append("#17191e")
+                cells.append("#101b29")
             else:
                 r, g, b = (round(sum(c[i] for c in opaque) / len(opaque))
                            for i in range(3))
