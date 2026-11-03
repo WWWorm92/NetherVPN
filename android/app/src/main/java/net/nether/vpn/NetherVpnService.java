@@ -265,7 +265,8 @@ public final class NetherVpnService extends VpnService {
         }
         throw new IOException(received == 0
                 ? "UDP: нет ответа на зашифрованный PING"
-                : "Ответ UDP получен, но PONG не прошёл проверку Noise");
+                : "Ответ UDP получен (" + received + "), но PONG отвергнут: "
+                    + secure.lastRejectReason());
     }
 
     private void transfer(DatagramSocket udp, NoiseTransport secure, ParcelFileDescriptor device,
