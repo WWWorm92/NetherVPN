@@ -39,8 +39,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("NetherVPN")
-        self.geometry("410x660")
-        self.minsize(360, 590)
+        self.geometry("930x720")
+        self.minsize(790, 650)
         self.configure(bg=BG)
         # App switcher/titlebar icon matches the Linux SVG and Android launcher.
         self._app_icon = create_icon(self)
@@ -183,21 +183,21 @@ class App(tk.Tk):
 
         core = tk.Frame(main, bg=BG)
         core.pack(fill="both", expand=True)
-        self.connect_btn = tk.Canvas(core, width=270, height=268, bg=BG, bd=0,
+        self.connect_btn = tk.Canvas(core, width=230, height=220, bg=BG, bd=0,
                                      highlightthickness=0, cursor="hand2", takefocus=1)
-        self.connect_btn.pack(pady=(12, 0))
+        self.connect_btn.pack(pady=(7, 0))
         self.outer_ring = self.connect_btn.create_oval(
-            19, 17, 251, 249, outline=RAISED, width=7)
+            19, 10, 211, 202, outline=RAISED, width=7)
         self.inner_ring = self.connect_btn.create_oval(
-            31, 29, 239, 237, outline="#31566a", width=1)
+            29, 20, 201, 192, outline="#31566a", width=1)
         self._accent_line = self.connect_btn.create_arc(
-            19, 17, 251, 249, start=72, extent=40, style="arc",
+            19, 10, 211, 202, start=72, extent=40, style="arc",
             outline=ACCENT, width=7)
         self.power_text = self.connect_btn.create_text(
-            135, 124, text="Подключить", fill=TEXT,
+            115, 105, text="Подключить", fill=TEXT,
             font=("DejaVu Sans", 19, "bold"))
         self.power_subtext = self.connect_btn.create_text(
-            135, 156, text="Нажмите для включения", fill=MUTED,
+            115, 135, text="Нажмите для включения", fill=MUTED,
             font=("DejaVu Sans", 10))
         self.connect_btn.bind("<Button-1>", lambda _e: self.toggle_connection())
         self.connect_btn.bind("<Return>", lambda _e: self.toggle_connection())
@@ -810,11 +810,13 @@ class App(tk.Tk):
                 self.status_tag.set("●  СОЕДИНЕНИЕ АКТИВНО")
                 self.status_hint.set("VPN-интерфейс работает")
                 self.status_badge.configure(fg=ACCENT)
+                self.sidebar_service.configure(text="●  Служба активна", fg=ACCENT)
             else:
                 self.state.set("Подключение…")
                 self.status_tag.set("●  ОЖИДАНИЕ ТУННЕЛЯ")
                 self.status_hint.set("Подключаемся к серверу")
                 self.status_badge.configure(fg=AMBER)
+                self.sidebar_service.configure(text="●  Установка соединения", fg=AMBER)
             if self.since:
                 seconds = int(time.monotonic() - self.since)
                 self.timing.set(
@@ -834,6 +836,7 @@ class App(tk.Tk):
             self.status_tag.set("●  НЕ ПОДКЛЮЧЕНО")
             self.status_hint.set("Можно выбрать другой сервер")
             self.status_badge.configure(fg=MUTED)
+            self.sidebar_service.configure(text="●  Служба остановлена", fg=MUTED)
             self.timing.set("00:00:00")
         self.update_power(running, ready)
         self.after(1000, self.tick)
