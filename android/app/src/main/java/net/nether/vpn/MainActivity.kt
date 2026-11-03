@@ -95,16 +95,21 @@ class MainActivity : Activity() {
         window.navigationBarColor = navy
 
         // Compact, native, vertically scrollable dashboard without fake navigation tabs.
-        val root = ScrollView(this).apply {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(navy)
+        }
+        val scroll = ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
             setBackgroundColor(navy)
         }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(25), dp(22), dp(24))
+            setPadding(dp(22), dp(25), dp(22), dp(17))
         }
-        root.addView(content)
+        scroll.addView(content)
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
 
         val heading = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -256,7 +261,7 @@ class MainActivity : Activity() {
                 setOnClickListener { action() }
             }
         navigation.addView(tab("⌂  Главная", true) {
-            root.smoothScrollTo(0, 0)
+            scroll.smoothScrollTo(0, 0)
         }, LinearLayout.LayoutParams(0, -2, 1f))
         navigation.addView(tab("▤  Серверы") { profileDialog() },
             LinearLayout.LayoutParams(0, -2, 1f))
@@ -264,8 +269,12 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(0, -2, 1f))
         navigation.addView(tab("⚙  Настройки") { settingsDialog() },
             LinearLayout.LayoutParams(0, -2, 1f))
-        content.addView(navigation)
-        space(content, 14)
+        root.addView(navigation, LinearLayout.LayoutParams(-1, -2).apply {
+            leftMargin = dp(16)
+            rightMargin = dp(16)
+            bottomMargin = dp(13)
+        })
+        space(content, 8)
         content.addView(text("Noise IK · IPv4 · Экспериментальный VPN",
             10f, muted).apply { gravity = Gravity.CENTER },
             LinearLayout.LayoutParams(-1, -2))
