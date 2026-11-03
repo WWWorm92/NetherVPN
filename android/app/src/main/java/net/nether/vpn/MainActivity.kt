@@ -23,14 +23,14 @@ import java.util.Locale
 
 /** Native NetherVPN dashboard, matched to the Linux client's visual language. */
 class MainActivity : Activity() {
-    private val navy = Color.rgb(16, 17, 21)
-    private val card = Color.rgb(29, 30, 36)
-    private val raised = Color.rgb(41, 43, 51)
-    private val mint = Color.rgb(255, 177, 92)
-    private val white = Color.rgb(246, 247, 249)
-    private val muted = Color.rgb(161, 164, 174)
-    private val amber = Color.rgb(255, 177, 92)
-    private val red = Color.rgb(255, 114, 130)
+    private val navy = Color.rgb(16, 27, 41)
+    private val card = Color.rgb(25, 43, 62)
+    private val raised = Color.rgb(35, 59, 82)
+    private val mint = Color.rgb(118, 217, 199)
+    private val white = Color.rgb(237, 244, 250)
+    private val muted = Color.rgb(158, 176, 196)
+    private val amber = Color.rgb(118, 217, 199)
+    private val red = Color.rgb(255, 135, 156)
     private val handler = Handler(Looper.getMainLooper())
     private val vpnRequest = 21
     private val fileRequest = 22
@@ -129,7 +129,7 @@ class MainActivity : Activity() {
             elevation = dp(4).toFloat()
             contentDescription = "Подключить VPN"
             setOnClickListener {
-                if (phase == "disconnected") connect() else disconnect()
+                if (phase == "disconnected" || phase == "error" || phase == "stale") connect() else disconnect()
             }
         }
         main.addView(connectButton, LinearLayout.LayoutParams(dp(226), dp(226)))
@@ -178,7 +178,7 @@ class MainActivity : Activity() {
         footer.addView(modeTitle, LinearLayout.LayoutParams(-1, -2))
         val selected = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = shape(card, 17)
+            background = shape(card, 28)
             setPadding(dp(18), dp(16), dp(18), dp(16))
             isClickable = true
             isFocusable = true
@@ -197,7 +197,7 @@ class MainActivity : Activity() {
         val navigation = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            background = shape(card, 15)
+            background = shape(card, 25)
             setPadding(dp(4), dp(6), dp(4), dp(6))
         }
         fun menuAction(title: String, onTap: () -> Unit): Button =
@@ -206,7 +206,7 @@ class MainActivity : Activity() {
                 isAllCaps = false
                 textSize = 12f
                 setTextColor(if (title.startsWith("⌂")) amber else muted)
-                background = shape(card, 12)
+                background = shape(card, 22)
                 minHeight = dp(45)
                 minimumHeight = dp(45)
                 setOnClickListener { onTap() }
@@ -390,13 +390,13 @@ class MainActivity : Activity() {
         }
         detail.text = if (phase == "stale")
             "Нет свежего подтверждения от VPN-службы. Проверьте настройки."
-            else prefs.getString("state", "Не подключено")
+            else if (phase == "error" || phase == "reconnecting")\n            prefs.getString("last_error", prefs.getString("state", "Нет соединения"))\n            else prefs.getString("state", "Не подключено")
         connectButton.text = when (phase) {
             "connected" -> "Подключено"
             "connecting" -> "Подключение…"
             "reconnecting" -> "Восстановление…"
-            "stale" -> "Сбросить VPN"
-            "error" -> "Сбросить VPN"
+            "stale" -> "Повторить подключение"
+            "error" -> "Повторить подключение"
             else -> "Подключить"
         }
         connectButton.setTextColor(if (connected) amber else white)
