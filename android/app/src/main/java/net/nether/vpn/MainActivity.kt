@@ -48,6 +48,7 @@ class MainActivity : Activity() {
     private lateinit var split: RadioButton
     private lateinit var dns: EditText
     private var phase = "disconnected"
+    private var renderedPhase = ""
 
     private fun dp(x: Int) = (x * resources.displayMetrics.density + .5f).toInt()
     private fun shape(color: Int, radius: Int = 18) = GradientDrawable().apply {
@@ -430,8 +431,11 @@ class MainActivity : Activity() {
             else -> "Подключить"
         }
         connectButton.setTextColor(navy)
-        connectButton.background = connectionSurface(
-            if (connected) mint else if (pending) amber else if (phase == "error") red else raised)
+        if (renderedPhase != phase) {
+            connectButton.background = connectionSurface(
+                if (connected) mint else if (pending) amber else if (phase == "error") red else raised)
+            renderedPhase = phase
+        }
         connectButton.contentDescription = if (phase == "disconnected")
             "Подключить VPN" else "Отключить VPN"
         up.text = bytes(prefs.getLong("tx", 0))
