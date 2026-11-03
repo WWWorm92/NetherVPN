@@ -27,6 +27,9 @@ public final class NoiseTransport implements AutoCloseable {
     private boolean replayInitialized;
     private long replayHighest;
     private long replayBits;
+    private volatile String lastRejectReason = "none";
+
+    public String lastRejectReason() { return lastRejectReason; }
 
     private NoiseTransport(CipherStatePair pair, long id, int epoch) {
         this.pair = pair; this.connectionId = id; this.epoch = epoch;
@@ -95,22 +98,47 @@ public final class NoiseTransport implements AutoCloseable {
 
     /** Authentication happens before replay-window changes. Returns null for invalid/duplicate packets. */
     public synchronized byte[] open(byte[] packet, int length) {
-        if (length < HEADER + TAG || packet[0] != 1 || packet[1] != 3) return null;
+        if (length < HEADER + TAG) {
+            lastRejectReason = "short_data_frame";
+            return null;
+        }
+        if (packet[0] != 1 || packet[1] != 3) {
+            lastRejectReason = "wrong_frame_type";
+            return null;
+        }
         ByteBuffer h = ByteBuffer.wrap(packet, 0, HEADER).order(ByteOrder.BIG_ENDIAN);
         h.position(2);
         long id = h.getLong();
         int packetEpoch = Short.toUnsignedInt(h.getShort());
         long counter = h.getLong();
-        if (id != connectionId || packetEpoch != epoch || counter < 0) return null;
+        if (id != connectionId || packetEpoch != epoch) {
+            lastRejectReason = "session_id_or_epoch";
+            return null;
+        }
+        if (counter < 0) {
+            lastRejectReason = "invalid_counter";
+            return null;
+        }
         byte[] header = Arrays.copyOfRange(packet, 0, HEADER);
         byte[] plain = new byte[length - HEADER - TAG];
         try {
             CipherState cipher = pair.getReceiver();
             cipher.setNonce(counter);
             int decoded = cipher.decryptWithAd(header, packet, HEADER, plain, 0, length - HEADER);
-            if (decoded != plain.length || !accept(counter)) return null;
+            if (decoded != plain.length) {
+                lastRejectReason = "wrong_payload_length";
+                return null;
+            }
+            if (!accept(counter)) {
+                lastRejectReason = "duplicate_or_replay";
+                return null;
+            }
+            lastRejectReason = "none";
             return plain;
         } catch (Exception ignored) {
+            // Do not expose plaintext or keys; the category is sufficient
+            // for classifying an encrypted PONG authentication failure.
+            lastRejectReason = "aead_or_nonce_rejected";
             return null;
         }
     }
