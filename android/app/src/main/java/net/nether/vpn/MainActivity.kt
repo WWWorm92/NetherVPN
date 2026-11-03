@@ -113,96 +113,212 @@ class MainActivity : Activity() {
         }
     }
 
+    private lateinit var modeTitle: TextView
+
+    private fun powerRing(color: Int) = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(navy)
+        setStroke(dp(3), color)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = navy
-        window.navigationBarColor = navy
-        val scroll = ScrollView(this).apply { setBackgroundColor(navy); isFillViewport = true }
-        val page = LinearLayout(this).apply {
+        window.navigationBarColor = card
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(20), dp(18), dp(26))
+            setBackgroundColor(navy)
         }
-        scroll.addView(page)
-        val brand = LinearLayout(this).apply {
+
+        // Small fixed header; the connection controls remain usable on a
+        // short phone because only the central region scrolls.
+        val heading = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(22), dp(18), dp(16), dp(12))
+        }
+        heading.addView(text("◈  NetherVPN", 20f, white, true),
+            LinearLayout.LayoutParams(0, -2, 1f))
+        heading.addView(text("ANDROID  ·  BETA", 10f, muted, true))
+        root.addView(heading)
+
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
+        }
+        val main = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(16), dp(8), dp(16), dp(12))
+        }
+        scroll.addView(main)
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        space(main, 8)
+        connectButton = Button(this).apply {
+            isAllCaps = false
+            textSize = 20f
+            setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+            setTextColor(white)
+            background = powerRing(muted)
+            elevation = dp(4).toFloat()
+            contentDescription = "Подключить VPN"
+            setOnClickListener {
+                if (phase == "disconnected") connect() else disconnect()
+            }
+        }
+        main.addView(connectButton, LinearLayout.LayoutParams(dp(226), dp(226)))
+        space(main, 20)
+        badge = text("●  НЕ ПОДКЛЮЧЕНО", 12f, muted, true)
+        main.addView(badge)
+        space(main, 7)
+        status = text("VPN выключен", 14f, white)
+        main.addView(status)
+        space(main, 4)
+        detail = text("Нажмите на круг для подключения", 11f, muted).apply {
+            gravity = Gravity.CENTER
+            maxLines = 2
+        }
+        main.addView(detail)
+        space(main, 18)
+        val info = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        brand.addView(text("◈", 32f, mint, true).apply {
-            gravity = Gravity.CENTER
-            background = shape(raised, 15)
-        }, LinearLayout.LayoutParams(dp(54), dp(54)))
-        brand.addView(LinearLayout(this).apply {
+        up = text("↑ 0 Б", 12f, muted)
+        down = text("↓ 0 Б", 12f, muted)
+        uptime = text("00:00:00", 12f, muted)
+        dropped = text("0", 12f, muted)
+        info.addView(up)
+        info.addView(text("    •    ", 11f, muted))
+        info.addView(down)
+        main.addView(info)
+        space(main, 5)
+        main.addView(uptime)
+
+        // Minimal footer: one route-policy row and one active server.
+        val footer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(13), 0, 0, 0)
-            addView(text("NetherVPN", 26f, white, true))
-            addView(caption("ЗАЩИЩЁННАЯ СЕТЬ  ·  ANDROID"))
-        })
-        page.addView(brand)
-        space(page, 21)
-
-        val hero = panel()
-        hero.background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            intArrayOf(Color.rgb(31, 65, 80), Color.rgb(17, 35, 55))).apply {
-            cornerRadius = dp(24).toFloat()
+            setPadding(dp(16), 0, dp(16), dp(12))
         }
-        hero.addView(caption("ЗАЩИЩЁННОЕ СОЕДИНЕНИЕ"))
-        space(hero, 14)
-        badge = text("●  НЕ ПОДКЛЮЧЕНО", 11f, muted, true)
-        hero.addView(badge)
-        space(hero, 8)
-        status = text("VPN выключен", 27f, white, true)
-        hero.addView(status)
-        space(hero, 5)
-        detail = text("Импортируйте профиль и подключитесь", 13f, muted)
-        hero.addView(detail)
-        space(hero, 21)
-        connectButton = button("◈  Подключить", true) {
-            if (phase == "disconnected") connect() else disconnect()
+        modeTitle = text("Режим подключения  ⌄", 12f, muted).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(5), dp(13), dp(5), dp(14))
+            setOnClickListener { settingsDialog() }
         }
-        hero.addView(connectButton, LinearLayout.LayoutParams(-1, dp(54)))
-        space(hero, 12)
-        endpoint = text("Сервер: —", 12f, muted)
-        hero.addView(endpoint)
-        addCard(page, hero)
+        footer.addView(modeTitle, LinearLayout.LayoutParams(-1, -2))
+        val selected = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = shape(card, 17)
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { profileDialog() }
+        }
+        selected.addView(text("АКТИВНЫЙ СЕРВЕР", 10f, muted, true))
+        space(selected, 7)
+        profile = text("Добавить сервер   ＋", 21f, white, true)
+        selected.addView(profile)
+        space(selected, 4)
+        endpoint = text("Конфигурация не загружена", 12f, muted)
+        selected.addView(endpoint)
+        footer.addView(selected)
+        space(footer, 12)
 
-        val metrics = panel()
-        metrics.addView(caption("СТАТИСТИКА СЕССИИ"))
-        space(metrics, 13)
-        up = text("0 Б", 19f, white, true)
-        down = text("0 Б", 19f, white, true)
-        dropped = text("0", 19f, white, true)
-        uptime = text("00:00:00", 19f, white, true)
-        metrics.addView(statRow(stat("↑ ОТПРАВЛЕНО", up), stat("↓ ПОЛУЧЕНО", down)))
-        space(metrics, 10)
-        metrics.addView(statRow(stat("ОТБРОШЕНО", dropped), stat("ВРЕМЯ", uptime)))
-        addCard(page, metrics)
+        val navigation = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            background = shape(card, 15)
+            setPadding(dp(4), dp(6), dp(4), dp(6))
+        }
+        fun menuAction(title: String, onTap: () -> Unit): Button =
+            Button(this).apply {
+                text = title
+                isAllCaps = false
+                textSize = 12f
+                setTextColor(if (title.startsWith("⌂")) amber else muted)
+                background = shape(card, 12)
+                minHeight = dp(45)
+                minimumHeight = dp(45)
+                setOnClickListener { onTap() }
+            }
+        navigation.addView(menuAction("⌂  Главная") { statisticsDialog() },
+            LinearLayout.LayoutParams(0, dp(47), 1f))
+        navigation.addView(menuAction("⚙  Настройки") { settingsDialog() },
+            LinearLayout.LayoutParams(0, dp(47), 1f))
+        navigation.addView(menuAction("＋  Импорт") { importDocument() },
+            LinearLayout.LayoutParams(0, dp(47), 1f))
+        footer.addView(navigation)
+        root.addView(footer)
 
-        val routing = panel()
-        routing.addView(caption("ПОДКЛЮЧЕНИЕ"))
-        space(routing, 8)
-        routing.addView(text("Маршрутизация", 19f, white, true))
-        space(routing, 8)
-        val choices = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+        // Settings fields exist only for the settings sheet, not the home UI.
+        full = RadioButton(this)
+        split = RadioButton(this)
+        dns = EditText(this)
+        setContentView(root)
+        updateProfile()
+        updateStatus()
+
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 55)
+        }
+    }
+
+    private fun importDocument() {
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+        }, fileRequest)
+    }
+
+    private fun profileDialog() {
+        val imported = SecretStore.exists(this)
+        val actions = if (imported)
+            arrayOf("Импортировать новый .conf", "Вставить конфигурацию", "Удалить профиль")
+        else arrayOf("Импортировать .conf", "Вставить конфигурацию")
+        AlertDialog.Builder(this)
+            .setTitle("Серверы")
+            .setItems(actions) { _, selected ->
+                when (selected) {
+                    0 -> importDocument()
+                    1 -> paste()
+                    2 -> deleteProfile()
+                }
+            }
+            .setNegativeButton("Закрыть", null)
+            .show()
+    }
+
+    private fun settingsDialog() {
+        val holder = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(6), dp(22), dp(3))
+        }
+        holder.addView(text("КАК НАПРАВЛЯТЬ ТРАФИК", 11f, muted, true))
+        space(holder, 11)
+        val routes = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
         full = RadioButton(this).apply {
             id = View.generateViewId()
             text = "Весь IPv4 через VPN"
-            textSize = 15f
             setTextColor(white)
-            buttonTintList = ColorStateList.valueOf(mint)
+            textSize = 15f
+            buttonTintList = ColorStateList.valueOf(amber)
         }
         split = RadioButton(this).apply {
             id = View.generateViewId()
             text = "Только VPN-сервер"
-            textSize = 15f
             setTextColor(white)
-            buttonTintList = ColorStateList.valueOf(mint)
+            textSize = 15f
+            buttonTintList = ColorStateList.valueOf(amber)
         }
-        choices.addView(full)
-        choices.addView(split)
-        routing.addView(choices)
-        space(routing, 8)
-        routing.addView(text("DNS-сервер для полного туннеля", 12f, muted))
-        space(routing, 7)
+        routes.addView(full)
+        routes.addView(split)
+        holder.addView(routes)
+        space(holder, 12)
+        holder.addView(text("DNS для полного туннеля", 12f, muted))
+        space(holder, 7)
         dns = EditText(this).apply {
             setSingleLine(true)
             textSize = 16f
@@ -210,68 +326,55 @@ class MainActivity : Activity() {
             setHintTextColor(muted)
             hint = "1.1.1.1"
             inputType = android.text.InputType.TYPE_CLASS_PHONE
-            background = shape(raised, 11)
-            setPadding(dp(14), dp(8), dp(14), dp(8))
+            background = shape(raised, 10)
+            setPadding(dp(13), dp(10), dp(13), dp(10))
         }
-        routing.addView(dns, LinearLayout.LayoutParams(-1, dp(49)))
-        space(routing, 12)
-        routing.addView(button("Сохранить настройки") {
-            try {
-                ClientSettings.save(this, full.isChecked, dns.text.toString())
-                updateProfile()
-                Toast.makeText(this, "Сохранено. Переподключите VPN для применения.",
-                    Toast.LENGTH_LONG).show()
-            } catch (e: Exception) { problem("Настройки", e) }
-        })
-        space(routing, 12)
-        routing.addView(text("В Full Tunnel IPv6 перехватывается и блокируется. " +
-            "На шлюзе необходим NAT для IPv4.", 12f, muted))
-        addCard(page, routing)
-
-        val credentials = panel()
-        credentials.addView(caption("ПРОФИЛЬ"))
-        space(credentials, 8)
-        profile = text("Профиль не загружен", 17f, white, true)
-        credentials.addView(profile)
-        space(credentials, 14)
-        credentials.addView(button("＋  Импортировать .conf", true) {
-            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "*/*"
-            }, fileRequest)
-        })
-        space(credentials, 9)
-        credentials.addView(button("Вставить конфигурацию") { paste() })
-        space(credentials, 9)
-        credentials.addView(button("Удалить профиль") { deleteProfile() })
-        space(credentials, 12)
-        credentials.addView(text("Приватный ключ хранится в Android Keystore. " +
-            "Не публикуйте и не пересылайте свой .conf посторонним.", 12f, muted))
-        addCard(page, credentials)
-
-        val privacy = panel()
-        privacy.addView(caption("БЕЗОПАСНОСТЬ"))
-        space(privacy, 8)
-        privacy.addView(text("Постоянная VPN", 19f, white, true))
-        space(privacy, 9)
-        privacy.addView(text("В Android включите «Постоянная VPN» и «Блокировать " +
-            "подключения без VPN». Это предотвращает прямой трафик при обрыве.", 12f, muted))
-        space(privacy, 12)
-        privacy.addView(button("Настройки VPN в Android  ↗") {
-            startActivity(Intent(android.provider.Settings.ACTION_VPN_SETTINGS))
-        })
-        addCard(page, privacy)
-        page.addView(text("NetherVPN  ·  0.5 Alpha  ·  Noise IK / IPv4\n" +
-            "Экспериментальный VPN. Независимый аудит безопасности не проводился.",
-            11f, muted))
-        setContentView(scroll)
+        holder.addView(dns, LinearLayout.LayoutParams(-1, dp(48)))
+        space(holder, 12)
+        holder.addView(text(
+            "В Full Tunnel IPv6 пока блокируется. Для выхода в интернет серверу нужен NAT.",
+            12f, muted))
         updateProfile()
-        updateStatus()
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
-            android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 55)
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Настройки")
+            .setView(holder)
+            .setNegativeButton("Отмена", null)
+            .setPositiveButton("Сохранить", null)
+            .setNeutralButton("Постоянная VPN") { _, _ ->
+                startActivity(Intent(android.provider.Settings.ACTION_VPN_SETTINGS))
+            }
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                try {
+                    ClientSettings.save(this, full.isChecked, dns.text.toString())
+                    updateProfile()
+                    dialog.dismiss()
+                    Toast.makeText(this,
+                        "Сохранено. Переподключите VPN для применения.",
+                        Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    problem("Настройки", e)
+                }
+            }
         }
+        dialog.show()
+    }
+
+    private fun statisticsDialog() {
+        val info = "↑ Отправлено: " + up.text + "\n" +
+            "↓ Получено: " + down.text + "\n" +
+            "Время: " + uptime.text + "\n" +
+            "Отброшено пакетов: " + dropped.text + "\n\n" +
+            "Noise IK · IPv4-only · экспериментальная версия"
+        AlertDialog.Builder(this)
+            .setTitle("Статистика и диагностика")
+            .setMessage(info)
+            .setPositiveButton("Закрыть", null)
+            .setNeutralButton("VPN в Android") { _, _ ->
+                startActivity(Intent(android.provider.Settings.ACTION_VPN_SETTINGS))
+            }
+            .show()
     }
 
     private fun bytes(value: Long): String = when {
@@ -315,9 +418,19 @@ class MainActivity : Activity() {
         detail.text = if (phase == "stale")
             "Нет свежего подтверждения от VPN-службы. Проверьте настройки."
             else prefs.getString("state", "Не подключено")
-        connectButton.text = if (phase == "disconnected") "◈  Подключить" else "Отключить VPN"
-        connectButton.setTextColor(if (phase == "disconnected") navy else white)
-        connectButton.background = shape(if (phase == "disconnected") mint else raised, 13)
+        connectButton.text = when (phase) {
+            "connected" -> "Подключено"
+            "connecting" -> "Подключение…"
+            "reconnecting" -> "Восстановление…"
+            "stale" -> "Сбросить VPN"
+            "error" -> "Сбросить VPN"
+            else -> "Подключить"
+        }
+        connectButton.setTextColor(if (connected) amber else white)
+        connectButton.background = powerRing(
+            if (connected) amber else if (pending) amber else if (phase == "error") red else muted)
+        connectButton.contentDescription = if (phase == "disconnected")
+            "Подключить VPN" else "Отключить VPN"
         up.text = bytes(prefs.getLong("tx", 0))
         down.text = bytes(prefs.getLong("rx", 0))
         dropped.text = prefs.getLong("dropped", 0).toString()
@@ -331,19 +444,21 @@ class MainActivity : Activity() {
     private fun updateProfile() {
         try {
             if (!SecretStore.exists(this)) {
-                profile.text = "Профиль не загружен"
+                profile.text = "Добавить сервер   ＋"
                 endpoint.text = "Сервер: —"
                 split.isChecked = true
                 dns.setText("1.1.1.1")
+                modeTitle.text = "Режим подключения   ⌄"
                 return
             }
             val config = VpnProfile.parse(SecretStore.load(this))
             val settings = ClientSettings.load(this, config)
-            profile.text = "Клиент: " + config.localIp
-            endpoint.text = "Сервер: " + config.endpointHost + ":" + config.endpointPort
+            profile.text = "NetherVPN  ⌄"
+            endpoint.text = config.endpointHost + ":" + config.endpointPort
             full.isChecked = settings.fullTunnel
             split.isChecked = !settings.fullTunnel
             dns.setText(settings.dns)
+            modeTitle.text = if (settings.fullTunnel) "Весь IPv4 через VPN   ⌄" else "Только VPN-сервер   ⌄"
         } catch (e: Exception) {
             profile.text = "Ошибка профиля"
             endpoint.text = "Импортируйте конфигурацию снова"
