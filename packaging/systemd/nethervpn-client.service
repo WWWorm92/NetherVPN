@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/nether-client -config /etc/nethervpn/client.conf
+ExecStart=/usr/local/bin/nether-client -config /etc/nethervpn/client.conf -settings /etc/nethervpn/client-settings.conf
 Restart=on-failure
 RestartSec=3
 CapabilityBoundingSet=CAP_NET_ADMIN

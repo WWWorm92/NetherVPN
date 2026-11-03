@@ -21,7 +21,8 @@ jobs:
         run: gofmt -l ./cmd ./internal
       - name: Static checks for Linux desktop and install scripts
         run: |
-          python3 -m py_compile gui/nethervpn.py
+          python3 -m py_compile gui/nethervpn.py gui/client_preferences.py
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
           bash -n scripts/*.sh
       - name: Test
         run: go test -race ./...

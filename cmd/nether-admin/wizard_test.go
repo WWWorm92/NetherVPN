@@ -1,34 +1,43 @@
 package main
-
 import(
+ "bufio"
  "bytes"
+ "path/filepath"
+ "fmt"
+ "os"
  "strings"
  "testing"
+ "github.com/WWWorm92/NetherVPN/internal/handshake"
 )
-
-func TestWizardLinuxAndFullTunnel(t *testing.T){
- inputs:="2\ndev_laptop\n1\n9.9.9.9\nда\n"
+func testConfig(t *testing.T)(string,string,string){
+ t.Helper()
+ dir:=t.TempDir()
+ server,err:=handshake.GenerateIdentity();if err!=nil{t.Fatal(err)}
+ client,err:=handshake.GenerateIdentity();if err!=nil{t.Fatal(err)}
+ config:=filepath.Join(dir,"server.conf")
+ data:=fmt.Sprintf("[Interface]\nName = nvpn0\nPrivateKey = %x\nAddress = 10.77.0.1/24\nListenPort = 51830\n\n[Peer]\nPublicKey = %x\nAllowedIPs = 10.77.0.2\n",server.Private,client.Public)
+ if err=os.WriteFile(config,[]byte(data),0600);err!=nil{t.Fatal(err)}
+ return config,filepath.Join(dir,"peers"),filepath.Join(dir,"clients")
+}
+func TestClientPrompt(t *testing.T){
+ config,_,_:=testConfig(t)
  var output bytes.Buffer
- options,confirmed,err:=wizard(strings.NewReader(inputs),&output,"not-needed.conf",provisionOptions{Endpoint:"77.221.132.76:51830",DNS:"1.1.1.1"})
+ answer,err:=askClient(bufio.NewReader(strings.NewReader("laptop\n77.221.132.76:51830\nда\n")),&output,config,"","")
  if err!=nil{t.Fatal(err)}
- if !confirmed||options.Name!="dev_laptop"||options.Platform!="linux"||!options.FullTunnel||options.DNS!="9.9.9.9"{
-  t.Fatalf("unexpected options: %+v",options)
- }
- if !strings.Contains(output.String(),"Публичный IPv4"){ // Provided explicitly, no endpoint question expected.
-  if !strings.Contains(output.String(),"Linux") && !strings.Contains(output.String(),"linux"){t.Fatal("missing platform summary")}
+ if answer.Name!="laptop"||answer.Endpoint!="77.221.132.76:51830"{t.Fatal(answer)}
+ for _,bad:=range []string{"Тип устройства","DNS-сервер","Режим:"}{
+  if strings.Contains(output.String(),bad){t.Fatalf("unexpected prompt %q",bad)}
  }
 }
-
-func TestWizardSplitAndCancel(t *testing.T){
- var output bytes.Buffer
- options,confirmed,err:=wizard(strings.NewReader("1\ndevice\n2\nда\n"),&output,"unused",provisionOptions{Endpoint:"77.221.132.76:51830"})
- if err!=nil||!confirmed||options.FullTunnel{t.Fatalf("split mode: %+v %v",options,err)}
- _,confirmed,err=wizard(strings.NewReader("1\ndevice\n1\n\nнет\n"),&output,"unused",provisionOptions{Endpoint:"77.221.132.76:51830"})
- if confirmed||err==nil{t.Fatal("cancel must not create profile")}
+func TestInteractiveMenuInfoAndExit(t *testing.T){
+ config,peers,clients:=testConfig(t)
+ var out bytes.Buffer
+ if err:=runMenu(bufio.NewReader(strings.NewReader("4\n2\n5\n")),&out,config,peers,clients);err!=nil{t.Fatal(err)}
+ if !strings.Contains(out.String(),"Интерфейс")||strings.Contains(out.String(),"PrivateKey ="){t.Fatal(out.String())}
 }
-
-func TestWizardEOF(t *testing.T){
- var output bytes.Buffer
- _,confirmed,err:=wizard(strings.NewReader(""),&output,"unused",provisionOptions{Endpoint:"77.221.132.76:51830"})
- if confirmed||err==nil{t.Fatal("missing input must fail closed")}
+func TestCreateCancelled(t *testing.T){
+ config,_,_:=testConfig(t)
+ var out bytes.Buffer
+ _,err:=askClient(bufio.NewReader(strings.NewReader("phone\n77.221.132.76:51830\nнет\n")),&out,config,"","")
+ if err==nil{t.Fatal("cancel should abort")}
 }

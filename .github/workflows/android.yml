@@ -58,4 +58,4 @@ jobs:
             --target "${GITHUB_SHA}" \
             --title "NetherVPN Android alpha build ${{ github.run_number }}" \
             --prerelease \
-            --notes "Experimental/debug-signed Android build. Single peer route only; NOT a production privacy VPN."
+            --notes "Experimental/debug-signed Android build. Universal profiles, local Full/Split IPv4 settings. NOT a production privacy VPN."

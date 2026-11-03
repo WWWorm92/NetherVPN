@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import java.nio.charset.StandardCharsets
@@ -20,6 +21,9 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var traffic: TextView
     private lateinit var profileStatus: TextView
+    private lateinit var fullMode: RadioButton
+    private lateinit var splitMode: RadioButton
+    private lateinit var dnsEditor: EditText
     private val requestVpn = 21
     private val requestFile = 22
     private val colors = intArrayOf(Color.rgb(14, 22, 38), Color.rgb(25, 38, 59),
@@ -73,6 +77,47 @@ class MainActivity : Activity() {
             startService(Intent(this, NetherVpnService::class.java)
                 .setAction(NetherVpnService.DISCONNECT))
         }
+        panel.addView(label("НАСТРОЙКИ ПОДКЛЮЧЕНИЯ", 15f, colors[2]))
+        panel.addView(label("Выбираются на телефоне и не изменяют файл .conf", 12f, colors[4]))
+        val modeGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+        }
+        fullMode = RadioButton(this).apply {
+            id = View.generateViewId()
+            text = "Весь IPv4 через VPN"
+            setTextColor(colors[3])
+        }
+        splitMode = RadioButton(this).apply {
+            id = View.generateViewId()
+            text = "Только адрес VPN-сервера"
+            setTextColor(colors[3])
+        }
+        modeGroup.addView(fullMode)
+        modeGroup.addView(splitMode)
+        panel.addView(modeGroup)
+        panel.addView(label("DNS внутри полного туннеля", 12f, colors[4]))
+        dnsEditor = EditText(this).apply {
+            setSingleLine(true)
+            setTextColor(colors[3])
+            setBackgroundColor(colors[1])
+            setPadding(16, 12, 16, 12)
+            inputType = android.text.InputType.TYPE_CLASS_PHONE
+            hint = "1.1.1.1"
+            setHintTextColor(colors[4])
+        }
+        panel.addView(dnsEditor, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        action("Сохранить режим и DNS") {
+            try {
+                ClientSettings.save(this, fullMode.isChecked, dnsEditor.text.toString())
+                updateProfile()
+                toast("Настройки сохранены. Переподключите VPN для применения.")
+            } catch (e: Exception) {
+                toast("Ошибка настроек: ${e.message}")
+            }
+        }
+        panel.addView(label("Автоподключение и блокировка без VPN управляются Android. " +
+            "Включите «Постоянная VPN» и «Блокировать подключения без VPN» в системных настройках.", 12f, colors[4]))
         action("Настройки Always-on VPN и блокировки утечек") {
             startActivity(Intent(android.provider.Settings.ACTION_VPN_SETTINGS))
         }
@@ -92,7 +137,7 @@ class MainActivity : Activity() {
             maxLines = 12
             setTextColor(colors[3])
             setHintTextColor(colors[4])
-            hint = "[Interface]\nPrivateKey = ...\nAddress = 10.77.0.3/32\nFullTunnel = true\nDNS = 1.1.1.1\n\n[Peer]\nPublicKey = ...\nEndpoint = 45.151.69.184:51830\nAllowedIPs = 10.77.0.1"
+            hint = "[Interface]\nPrivateKey = ...\nAddress = 10.77.0.3/32\n\n[Peer]\nPublicKey = ...\nEndpoint = 77.221.132.76:51830\nAllowedIPs = 10.77.0.1"
             setBackgroundColor(colors[1])
             setPadding(16, 16, 16, 16)
             inputType = android.text.InputType.TYPE_CLASS_TEXT or
@@ -118,11 +163,9 @@ class MainActivity : Activity() {
             toast("Сохранённый профиль удалён")
         }
         panel.addView(label(
-            "FullTunnel = true: весь IPv4 и DNS направляется через VPN; IPv6 блокируется. " +
-            "Для выхода в интернет на сервере требуется NAT. " +
-            "На Android включите «Постоянная VPN» и «Блокировать подключения без VPN», " +
-            "чтобы не допустить прямого трафика во время переподключения. " +
-            "Экспериментальная версия, не прошедшая аудит безопасности.", 13f, colors[4]))
+            "Экспериментальная версия. Для полного туннеля на сервере нужен NAT. " +
+            "IPv6 при полном туннеле блокируется. Системные настройки Android " +
+            "отвечают за защиту трафика при отключённом VPN.", 13f, colors[4]))
         setContentView(outer)
         updateProfile()
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -134,11 +177,19 @@ class MainActivity : Activity() {
 
     private fun updateProfile() {
         profileStatus.text = try {
-            if (!SecretStore.exists(this)) "Профиль не загружен"
-            else {
-                val profile = VpnProfile.parse(SecretStore.load(this))
-                if (profile.fullTunnel) "Профиль сохранён · весь IPv4 через VPN"
-                else "Профиль сохранён · маршрут только к серверу"
+            if (!SecretStore.exists(this)) {
+                fullMode.isChecked = false
+                splitMode.isChecked = true
+                dnsEditor.setText("1.1.1.1")
+                "Профиль не загружен"
+            } else {
+                val identity = VpnProfile.parse(SecretStore.load(this))
+                val settings = ClientSettings.load(this, identity)
+                fullMode.isChecked = settings.fullTunnel
+                splitMode.isChecked = !settings.fullTunnel
+                dnsEditor.setText(settings.dns)
+                if (settings.fullTunnel) "Профиль сохранён · полный IPv4"
+                else "Профиль сохранён · раздельный туннель"
             }
         } catch (_: Exception) { "Ошибка чтения сохранённого профиля" }
     }
