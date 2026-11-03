@@ -115,3 +115,12 @@ Android simultaneously with one profile/key/IP replaces the peer session and
 causes apparent reconnect loops. Create a separate Android identity with
 `sudo nether-admin` before testing. This alpha still requires real-device
 interoperability, full-tunnel NAT and DNS testing.
+
+## 0.8 Alpha approved layout
+
+The home screen now follows the selected NetherVPN visual direction: a
+status-driven circular connection control, live counters, a selectable server,
+local Full/Split routing shortcut, and fixed bottom navigation. The bottom
+items invoke actual profile/settings actions; country flags and latency are
+not invented because the protocol does not yet provide such data. The new
+screen does not alter VPN sessions, keys, server permissions or NAT.
