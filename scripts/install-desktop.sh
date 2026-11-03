@@ -64,6 +64,11 @@ for directory in "$HOME/.local/share/applications" "$HOME/Desktop" "$HOME/Раб
   done < <(find "$directory" -maxdepth 1 -type f -name '*.desktop' -print0)
 done
 
+# Some desktops cache icon metadata; a named SVG is installed as fallback.
+SVG_ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
+mkdir -p "$SVG_ICON_DIR"
+install -m 0644 "$ROOT/assets/nethervpn.svg" "$SVG_ICON_DIR/nethervpn.svg"
+
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "$HOME/.local/share/applications" || true
 fi
