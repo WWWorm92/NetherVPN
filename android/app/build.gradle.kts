@@ -12,8 +12,8 @@ android {
         applicationId = "net.nether.vpn"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "0.9-alpha"
+        versionCode = 11
+        versionName = "0.9.1-alpha"
     }
 
     buildFeatures { compose = true }
