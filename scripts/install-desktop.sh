@@ -55,7 +55,7 @@ for directory in "$HOME/.local/share/applications" "$HOME/Desktop" "$HOME/Раб
   while IFS= read -r -d '' launcher; do
     [[ "$launcher" == "$DESKTOP_FILE" ]] && continue
     [[ -f "$launcher" && ! -L "$launcher" ]] || continue
-    if grep -Eq '^Exec=.*gui/nethervpn\\.py([[:space:]]|$)' "$launcher" &&
+    if grep -Fq '/gui/nethervpn.py' "$launcher" &&
        grep -Eq '^(Name|Comment)=.*(NetherVPN|Nether VPN)' "$launcher"; then
       cp "$DESKTOP_FILE" "$launcher"
       chmod 0644 "$launcher"
@@ -76,7 +76,7 @@ for directory in /usr/share/applications /usr/local/share/applications; do
   [[ -d "$directory" ]] || continue
   while IFS= read -r -d '' launcher; do
     [[ -f "$launcher" ]] || continue
-    if grep -Eq '^Exec=.*gui/nethervpn\\.py([[:space:]]|$)' "$launcher" &&
+    if grep -Fq '/gui/nethervpn.py' "$launcher" &&
        grep -Eq '^(Name|Comment)=.*(NetherVPN|Nether VPN)' "$launcher"; then
       override="$HOME/.local/share/applications/$(basename "$launcher")"
       if [[ "$override" != "$DESKTOP_FILE" && ! -L "$override" ]]; then
