@@ -124,3 +124,34 @@ local Full/Split routing shortcut, and fixed bottom navigation. The bottom
 items invoke actual profile/settings actions; country flags and latency are
 not invented because the protocol does not yet provide such data. The new
 screen does not alter VPN sessions, keys, server permissions or NAT.
+
+## Android 0.9 Alpha — Jetpack Compose / Material 3
+
+The main Activity is now written with **Jetpack Compose**, Kotlin 2.0 Compose
+compiler plugin and Material 3. It uses an animated connection ring with
+phase-dependent color, soft navy surfaces, a fixed four-tab bottom bar and
+dedicated Server, Profile and Settings screens. Status, counters and uptime
+are read from the existing `NetherVpnService` preferences; this is not a
+fake connection indicator. Because the backend currently stores one identity,
+the Profiles screen explicitly shows one profile rather than pretending to
+support a profile list. Country flags and ping are intentionally omitted
+until real measurements exist.
+
+**Important:** the Java VPN transport, Noise handshake, packet policy,
+Keystore profile storage and server configuration have not been changed by
+this UI migration. Installing this build does not resolve a shared-identity
+session conflict or prove tunnel connectivity on a physical device.
+Create a **different** client profile for Linux and Android with
+`sudo nether-admin` before testing both simultaneously.
+
+Android source build requires Java 17, SDK 35 and Gradle 8.9:
+
+```bash
+cd android
+gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon
+```
+
+The workflow `.github/workflows/android.yml` builds and publishes debug-signed
+test APKs from `main`. Do not uninstall an existing debug-signed application
+without securely backing up its unique client profile first, since signing
+certificates can change between CI builds.
