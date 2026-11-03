@@ -1,4 +1,4 @@
-name: Android alpha APK
+name: Android Compose alpha APK
 
 on:
   push:
@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   build-android:
-    name: Build Android APK
+    name: Build and test Compose Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -58,4 +58,4 @@ jobs:
             --target "${GITHUB_SHA}" \
             --title "NetherVPN Android alpha build ${{ github.run_number }}" \
             --prerelease \
-            --notes "Experimental/debug-signed Android build. Android dashboard, Linux-parity packet filtering, local Full/Split IPv4 and DNS settings. NOT a production privacy VPN."
+            --notes "NetherVPN Android 0.9 Alpha: Jetpack Compose / Material 3 dashboard, animated status ring, separate navigation pages, secure profile import and local routing settings. Experimental/debug signed; VPN interoperability remains unverified."
