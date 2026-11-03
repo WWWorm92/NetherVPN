@@ -23,12 +23,13 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb xauth libegl1 libgl1 libxkbcommon0
-          python3 -m pip install --user "PySide6>=6.6,<7"
+          python3 -m venv .venv-ci
+          .venv-ci/bin/python -m pip install "PySide6>=6.6,<7"
       - name: Static checks for Linux desktop and install scripts
         run: |
           python3 -m py_compile gui/nethervpn_qt.py gui/nethervpn.py gui/client_preferences.py
           python3 -m unittest discover -s tests -p 'test_desktop_*.py' -v
-          QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -p 'test_gui_smoke.py' -v
+          QT_QPA_PLATFORM=offscreen .venv-ci/bin/python -m unittest discover -s tests -p 'test_gui_smoke.py' -v
           bash -n scripts/*.sh
       - name: Test
         run: go test -race ./...
