@@ -286,14 +286,21 @@ class MainActivity : Activity() {
     private fun updateStatus() {
         val prefs = getSharedPreferences(NetherVpnService.PREFS, MODE_PRIVATE)
         phase = prefs.getString("phase", "disconnected") ?: "disconnected"
+        // A process kill may leave the last SharedPreferences state as
+        // "connected". Never show a stale green security indication.
+        val last = prefs.getLong("updated_elapsed", 0L)
+        val now = SystemClock.elapsedRealtime()
+        if (phase == "connected" && (last == 0L || now < last || now - last > 30000L))
+            phase = "stale"
         val connected = phase == "connected"
         val pending = phase == "connecting" || phase == "reconnecting"
-        badge.setTextColor(if (connected) mint else if (pending) amber
+        badge.setTextColor(if (connected) mint else if (pending || phase == "stale") amber
                            else if (phase == "error") red else muted)
         badge.text = when (phase) {
             "connected" -> "●  СОЕДИНЕНИЕ ЗАЩИЩЕНО"
             "connecting" -> "●  ПОДКЛЮЧЕНИЕ"
             "reconnecting" -> "●  ПЕРЕПОДКЛЮЧЕНИЕ"
+            "stale" -> "●  НЕТ СВЕЖЕГО СОСТОЯНИЯ"
             "error" -> "●  ОШИБКА"
             else -> "●  НЕ ПОДКЛЮЧЕНО"
         }
@@ -301,10 +308,13 @@ class MainActivity : Activity() {
             "connected" -> "Подключено"
             "connecting" -> "Подключаемся…"
             "reconnecting" -> "Восстанавливаем…"
+            "stale" -> "Проверьте соединение"
             "error" -> "Нет соединения"
             else -> "VPN выключен"
         }
-        detail.text = prefs.getString("state", "Не подключено")
+        detail.text = if (phase == "stale")
+            "Нет свежего подтверждения от VPN-службы. Проверьте настройки."
+            else prefs.getString("state", "Не подключено")
         connectButton.text = if (phase == "disconnected") "◈  Подключить" else "Отключить VPN"
         connectButton.setTextColor(if (phase == "disconnected") navy else white)
         connectButton.background = shape(if (phase == "disconnected") mint else raised, 13)
