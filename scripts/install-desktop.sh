@@ -21,3 +21,9 @@ mkdir -p "$HOME/.local/share/applications"
 printf '[Desktop Entry]\nType=Application\nName=NetherVPN\nComment=Experimental Linux VPN client\nExec=/usr/bin/python3 %s/gui/nethervpn.py\nTerminal=false\nCategories=Network;\n' "$ROOT" > "$HOME/.local/share/applications/nethervpn.desktop"
 chmod 0644 "$HOME/.local/share/applications/nethervpn.desktop"
 echo 'NetherVPN installed in application menu.'
+if ! command -v resolvectl >/dev/null; then
+  echo 'WARNING: Full Tunnel needs resolvectl (systemd-resolved).' >&2
+  echo 'Install and activate systemd-resolved before connecting in Full mode.' >&2
+elif ! systemctl is-active --quiet systemd-resolved.service; then
+  echo 'WARNING: systemd-resolved is inactive. Full Tunnel DNS will not work.' >&2
+fi
