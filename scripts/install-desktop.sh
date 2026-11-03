@@ -69,6 +69,25 @@ SVG_ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
 mkdir -p "$SVG_ICON_DIR"
 install -m 0644 "$ROOT/assets/nethervpn.svg" "$SVG_ICON_DIR/nethervpn.svg"
 
+# User override for a system-wide legacy desktop ID (no changes to /usr/share).
+# A pinned GNOME/KDE favorite may reference that old filename rather than
+# nethervpn.desktop. Matching ID overrides make it open the new Qt executable.
+for directory in /usr/share/applications /usr/local/share/applications; do
+  [[ -d "$directory" ]] || continue
+  while IFS= read -r -d '' launcher; do
+    [[ -f "$launcher" ]] || continue
+    if grep -Eq '^Exec=.*gui/nethervpn\\.py([[:space:]]|$)' "$launcher" &&
+       grep -Eq '^(Name|Comment)=.*(NetherVPN|Nether VPN)' "$launcher"; then
+      override="$HOME/.local/share/applications/$(basename "$launcher")"
+      if [[ "$override" != "$DESKTOP_FILE" && ! -L "$override" ]]; then
+        cp "$DESKTOP_FILE" "$override"
+        chmod 0644 "$override"
+        echo "Overrode legacy system launcher: $(basename "$launcher")"
+      fi
+    fi
+  done < <(find "$directory" -maxdepth 1 -type f -name '*.desktop' -print0)
+done
+
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "$HOME/.local/share/applications" || true
 fi
