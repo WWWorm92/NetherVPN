@@ -303,7 +303,7 @@ public final class NetherVpnService extends VpnService {
         connectedSinceElapsed = 0;
         closeCurrent();
         if (worker != null) worker.interrupt();
-        publish("Не подключено");
+        publish("Не подключено", "disconnected");
     }
 
     @Override public void onRevoke() { shutdown(); stopSelf(); }
