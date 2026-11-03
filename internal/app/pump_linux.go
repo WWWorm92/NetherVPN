@@ -22,6 +22,14 @@ var errIPv6Blocked=errors.New("IPv6 blocked in IPv4-only Full Tunnel")
 var keepaliveRequest=[]byte("\x00NVPN-PING-v1")
 var keepaliveReply=[]byte("\x00NVPN-PONG-v1")
 
+// clientOutboundPolicy ensures packets on a shared kernel TUN cannot inject
+// other clients' IP addresses. A failure is a packet drop, not a session error.
+func clientOutboundPolicy(packet []byte, local netip.Addr, fullTunnel bool) error {
+ if !tunnel.IsIP(packet) {return tunnel.ErrInvalidPacket}
+ if fullTunnel && packet[0]>>4!=4 {return errIPv6Blocked}
+ return tunnel.VerifySource(packet, local)
+}
+
 // runPumps actively checks authenticated peer liveness, not TUN presence.
 func runPumps(parent context.Context, device *tun.Device, conn *net.UDPConn, peer *net.UDPAddr, secure *session.Session, mtu int, allowed netip.Addr,local netip.Addr,fullTunnel bool) error {
  ctx,cancel:=context.WithCancel(parent)
@@ -33,8 +41,7 @@ func runPumps(parent context.Context, device *tun.Device, conn *net.UDPConn, pee
  var dropped atomic.Uint64
  go func(){
   errorsCh<-tunnel.PumpToUDPFiltered(ctx,device,conn,peer,secure,mtu,func(packet []byte)error{
-   if fullTunnel && (len(packet)==0 || packet[0]>>4!=4){return errIPv6Blocked}
-   return tunnel.VerifySource(packet,local)
+   return clientOutboundPolicy(packet,local,fullTunnel)
   },func(reason error,n int){
    count:=dropped.Add(1)
    // Bounded diagnostic output, never log payloads, credentials or IP data.
