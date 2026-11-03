@@ -41,6 +41,12 @@ class DesktopDashboardSmokeTest(unittest.TestCase):
                     self.assertEqual(result, profiles / "laptop.prefs")
                     self.assertIn("Mode = full", result.read_text(encoding="utf-8"))
                     self.assertIn("DNS = 9.9.9.9", result.read_text(encoding="utf-8"))
+                    app.last_service_poll = 123.0
+                    app.finish_operation(lambda: None)
+                    self.assertEqual(app.last_service_poll, 0.0)
+                    app.mode_var.set("split")
+                    app.refresh_mode_label()
+                    self.assertEqual(app.mode_text.get(), "Только VPN-сервер · интернет без изменений")
                 finally:
                     app.destroy()
 
