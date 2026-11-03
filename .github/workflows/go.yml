@@ -19,19 +19,16 @@ jobs:
         run: go mod tidy -diff
       - name: Formatting report
         run: gofmt -l ./cmd ./internal
-      - name: Install Tkinter and virtual display for dashboard smoke test
+      - name: Install Qt desktop test runtime
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq python3-tk xvfb xauth
+          sudo apt-get install -y -qq xvfb xauth libegl1 libgl1 libxkbcommon0
+          python3 -m pip install --user "PySide6>=6.6,<7"
       - name: Static checks for Linux desktop and install scripts
         run: |
-          python3 -m py_compile gui/nethervpn.py gui/client_preferences.py
+          python3 -m py_compile gui/nethervpn_qt.py gui/nethervpn.py gui/client_preferences.py
           python3 -m unittest discover -s tests -p 'test_desktop_*.py' -v
-          if command -v xvfb-run >/dev/null; then
-            xvfb-run -a python3 -m unittest discover -s tests -p 'test_gui_smoke.py' -v
-          else
-            echo 'Xvfb not installed: skipping desktop widget smoke test'
-          fi
+          QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -p 'test_gui_smoke.py' -v
           bash -n scripts/*.sh
       - name: Test
         run: go test -race ./...
