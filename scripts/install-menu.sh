@@ -48,7 +48,7 @@ for directory in "$APP_DIR" "$HOME/Desktop" "$HOME/Рабочий стол"; do
   while IFS= read -r -d '' old; do
     [[ "$old" == "$DESKTOP" || -L "$old" ]] && continue
     if grep -Eq '^Name=NetherVPN([[:space:]]|$)' "$old" &&
-       grep -Eq '^Exec=.*nethervpn(_qt)?\\.py' "$old"; then
+       grep -Fq '/gui/nethervpn.py' "$old"; then
       cp "$DESKTOP" "$old"
       echo "Updated previous launcher: $old"
     fi
@@ -60,7 +60,7 @@ for directory in /usr/share/applications /usr/local/share/applications; do
   [[ -d "$directory" ]] || continue
   while IFS= read -r -d '' old; do
     if grep -Eq '^Name=NetherVPN([[:space:]]|$)' "$old" &&
-       grep -Eq '^Exec=.*nethervpn\\.py' "$old"; then
+       grep -Fq '/gui/nethervpn.py' "$old"; then
       override="$APP_DIR/$(basename "$old")"
       [[ "$override" == "$DESKTOP" || -L "$override" ]] && continue
       cp "$DESKTOP" "$override"
