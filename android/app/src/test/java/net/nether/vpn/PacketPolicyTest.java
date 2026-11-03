@@ -20,9 +20,9 @@ public final class PacketPolicyTest {
     }
 
     @Test public void onlyAssignedIpv4MayLeaveDevice() {
-        byte[] valid = packet(LOCAL, { 8, 8, 8, 8 });
+        byte[] valid = packet(LOCAL, new byte[]{8, 8, 8, 8});
         assertEquals(PacketPolicy.OK, PacketPolicy.outbound(valid, valid.length, LOCAL));
-        byte[] spoof = packet({10, 77, 0, 4}, SERVER);
+        byte[] spoof = packet(new byte[]{10, 77, 0, 4}, SERVER);
         assertEquals(PacketPolicy.FOREIGN_SOURCE, PacketPolicy.outbound(spoof, spoof.length, LOCAL));
     }
 
@@ -40,14 +40,14 @@ public final class PacketPolicyTest {
     }
 
     @Test public void splitRequiresServerSourceAndFullAcceptsInternetSources() {
-        byte[] internetReply = packet({8, 8, 8, 8}, LOCAL);
+        byte[] internetReply = packet(new byte[]{8, 8, 8, 8}, LOCAL);
         assertEquals(PacketPolicy.OK, PacketPolicy.inbound(internetReply, internetReply.length,
                 LOCAL, SERVER, true));
         assertEquals(PacketPolicy.FOREIGN_SOURCE, PacketPolicy.inbound(internetReply, internetReply.length,
                 LOCAL, SERVER, false));
         byte[] peerReply = packet(SERVER, LOCAL);
         assertEquals(PacketPolicy.OK, PacketPolicy.inbound(peerReply, peerReply.length, LOCAL, SERVER, false));
-        byte[] wrongDest = packet(SERVER, {10, 77, 0, 4});
+        byte[] wrongDest = packet(SERVER, new byte[]{10, 77, 0, 4});
         assertEquals(PacketPolicy.FOREIGN_DESTINATION, PacketPolicy.inbound(wrongDest, wrongDest.length,
                 LOCAL, SERVER, true));
     }
