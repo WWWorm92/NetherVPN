@@ -1,87 +1,65 @@
-"""Headless compact Linux UI smoke and profile/route-dialog regression tests.
+"""Qt desktop smoke tests; run with QT_QPA_PLATFORM=offscreen.
 
-Run with xvfb-run -a python3 -m unittest discover -s tests -p test_gui_smoke.py
+python -m unittest discover -s tests -p test_gui_smoke.py
 """
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "gui"))
-import nethervpn
+
+try:
+    from PySide6.QtWidgets import QApplication
+    from nethervpn_qt import Window
+except ImportError:
+    QApplication = None
+    Window = None
 
 
-class CompactDesktopSmokeTest(unittest.TestCase):
-    def test_home_and_dialog_workflows(self):
-        with tempfile.TemporaryDirectory() as temp:
-            profiles = Path(temp) / "profiles"
-            with patch.object(nethervpn, "BASE", profiles):
-                app = nethervpn.App()
+@unittest.skipIf(QApplication is None, "PySide6 unavailable")
+class QtDesktopSmokeTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.qtapp = QApplication.instance() or QApplication([])
+
+    def test_navigation_profile_settings_and_diagnostics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "profiles"
+            with patch("nethervpn_qt.BASE", root):
+                window = Window()
+                window.timer.stop()
                 try:
-                    app.update_idletasks()
-                    self.assertEqual(app.title(), "NetherVPN")
-                    self.assertTrue(790 <= app.winfo_width() <= 1100)
-                    self.assertTrue(app.connect_btn.winfo_exists())
-                    self.assertTrue(app.profile_btn.winfo_exists())
-                    self.assertTrue(app.sidebar_service.winfo_exists())
-                    self.assertTrue(app.status_badge.winfo_exists())
-                    self.assertEqual(app._app_icon.width(), 64)
-                    self.assertEqual(app._app_icon.height(), 64)
-                    self.assertEqual(app._header_icon.width(), 32)
-                    self.assertIsNone(app.logbox)
-
-                    conf = profiles / "laptop.conf"
-                    conf.write_text(
-                        "[Interface]\nName = nvpn0\nAddress = 10.77.0.3/32\n"
-                        "[Peer]\nEndpoint = 192.0.2.1:51830\nAllowedIPs = 10.77.0.1\n",
-                        encoding="utf-8")
-                    conf.chmod(0o600)
-                    app.refresh()
-                    self.assertEqual(app.selected(), conf)
-                    self.assertIn("laptop", app.profile_title.get())
-
-                    app.open_settings()
-                    self.assertIsNotNone(app.settings_window)
-                    self.assertEqual(set(app.mode_buttons), {"full", "split"})
-                    app.mode_var.set("full")
-                    app.dns_var.set("9.9.9.9")
-                    result = app.save_settings(notify=False)
-                    self.assertEqual(result, profiles / "laptop.prefs")
-                    self.assertIn("Mode = full", result.read_text(encoding="utf-8"))
-                    self.assertIn("DNS = 9.9.9.9", result.read_text(encoding="utf-8"))
-                    app.settings_window.destroy()
-                    app.settings_window = None
-                    app.mode_buttons = {}
-
-                    app.open_profiles()
-                    self.assertIsNotNone(app.profile_list)
-                    self.assertEqual(app.profile_list.size(), 1)
-                    app.profile_window.destroy()
-                    app.profile_window = None
-                    app.profile_list = None
-
-                    app.open_logs()
-                    self.assertTrue(app.logbox.winfo_exists())
-                    app.log("Smoke-test diagnostic")
-                    self.assertIn("Smoke-test diagnostic", app.logbox.get("1.0", "end"))
-                    app.logbox.master.destroy()
-                    app.logbox = None
-
-                    app.last_service_poll = 123.0
-                    app.finish_operation(lambda: None)
-                    self.assertEqual(app.last_service_poll, 0.0)
-                    app.mode_var.set("split")
-                    app.refresh_mode_label()
-                    self.assertIn("Раздельный", app.mode_text.get())
-                    app.update_power(True, ready=True)
-                    self.assertEqual(
-                        app.connect_btn.itemcget(app.power_text, "text"), "Отключить")
-                    app.update_power(False)
-                    self.assertEqual(
-                        app.connect_btn.itemcget(app.power_text, "text"), "Подключить")
+                    self.assertEqual(window.windowTitle(), "NetherVPN")
+                    self.assertEqual(window.pages.count(), 5)
+                    self.assertFalse(window.current)
+                    self.assertEqual(window.profile_label.text(), "Добавить сервер")
+                    p = root / "laptop.conf"
+                    p.write_text(
+                        "[Interface]\\nName = nvpn0\\nAddress = 10.77.0.3/32\\n"
+                        "[Peer]\\nEndpoint = 192.0.2.1:51830\\nAllowedIPs = 10.77.0.1\\n"
+                    )
+                    p.chmod(0o600)
+                    window.refresh_profiles()
+                    self.assertEqual(window.current, p)
+                    self.assertIn("laptop", window.profile_label.text())
+                    window.go(3)
+                    self.assertEqual(window.pages.currentIndex(), 3)
+                    window.mode_box.setCurrentIndex(0)
+                    window.dns_edit.setText("9.9.9.9")
+                    self.assertTrue(window.save_settings(notify=False))
+                    pref = root / "laptop.prefs"
+                    self.assertIn("Mode = full", pref.read_text())
+                    self.assertIn("DNS = 9.9.9.9", pref.read_text())
+                    window.go(2)
+                    self.assertEqual(window.pages.currentIndex(), 2)
+                    window.ring.state("Подключить", "Отключено", "#95b0c5")
+                    self.assertEqual(window.ring.title, "Подключить")
                 finally:
-                    app.destroy()
+                    window.close()
 
 
 if __name__ == "__main__":
