@@ -684,7 +684,7 @@ class Window(QMainWindow):
         else:
             title, subtitle, color = "Подключить", "Нажмите для включения", MUTED
         self.ring.state(title, subtitle, color)
-        self.status.setText("●  " + ("VPN-интерфейс активен" if iface else "Служба запущена" if running else "Не подключено"))\n        self.status.setStyleSheet("color: " + (MINT if iface else AMBER if running else MUTED))
+        self.status.setText("●  " + ("VPN-интерфейс активен" if iface else "Служба запущена" if running else "Не подключено"))\n        self.status.setStyleSheet("background: transparent; color: " + (MINT if iface else AMBER if running else MUTED))
         self.hint.setText("Интерфейс VPN активен" if iface else "Проверьте подключение" if running else "Выберите сервер и подключитесь")
         self.side_status.setText("●  Служба активна" if running else "●  Служба остановлена")
         if iface:
@@ -731,6 +731,9 @@ class Window(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
+    app.setApplicationName("NetherVPN")
+    app.setDesktopFileName("nethervpn")
+    app.setWindowIcon(brand_icon())
     app.setStyle("Fusion")
     app.setStyleSheet(STYLE)
     window = Window()
