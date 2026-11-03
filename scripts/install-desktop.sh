@@ -26,7 +26,7 @@ sudo systemctl daemon-reload
 # is deliberately used instead of relying on optional SVG image plugins.
 ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
 mkdir -p "$ICON_DIR" "$HOME/.local/share/applications"
-"$ROOT/.venv/bin/python" scripts/render-desktop-icon.py "$ICON_DIR/nethervpn.png"
+QT_QPA_PLATFORM=offscreen "$ROOT/.venv/bin/python" scripts/render-desktop-icon.py "$ICON_DIR/nethervpn.png"
 
 DESKTOP_FILE="$HOME/.local/share/applications/nethervpn.desktop"
 cat > "$DESKTOP_FILE" <<EOF
