@@ -21,9 +21,10 @@ class CompactDesktopSmokeTest(unittest.TestCase):
                 try:
                     app.update_idletasks()
                     self.assertEqual(app.title(), "NetherVPN")
-                    self.assertTrue(360 <= app.winfo_width() <= 470)
+                    self.assertTrue(790 <= app.winfo_width() <= 1100)
                     self.assertTrue(app.connect_btn.winfo_exists())
                     self.assertTrue(app.profile_btn.winfo_exists())
+                    self.assertTrue(app.sidebar_service.winfo_exists())
                     self.assertTrue(app.status_badge.winfo_exists())
                     self.assertEqual(app._app_icon.width(), 64)
                     self.assertEqual(app._app_icon.height(), 64)
