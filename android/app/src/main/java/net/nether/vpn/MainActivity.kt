@@ -103,7 +103,14 @@ private data class VpnUi(
     val elapsed: Long = 0,
     val stage: String = "idle",
     val failedStage: String = "",
-    val lastError: String = ""
+    val lastError: String = "",
+    val wireRx: Long = 0,
+    val decryptedRx: Long = 0,
+    val writtenRx: Long = 0,
+    val invalidRx: Long = 0,
+    val outboundDrops: Long = 0,
+    val inboundDrops: Long = 0,
+    val ipv6Drops: Long = 0
 ) {
     val active get() = phase == "connected"
     val pending get() = phase == "connecting" || phase == "reconnecting"
@@ -273,7 +280,11 @@ class MainActivity : ComponentActivity() {
             p.getLong("dropped", 0), secs,
             p.getString("stage", "idle") ?: "idle",
             p.getString("failed_stage", "") ?: "",
-            p.getString("last_error", "") ?: "")
+            p.getString("last_error", "") ?: "",
+            p.getLong("wire_rx", 0), p.getLong("decrypted_rx", 0),
+            p.getLong("written_rx", 0), p.getLong("invalid_rx", 0),
+            p.getLong("outbound_drops", 0), p.getLong("inbound_drops", 0),
+            p.getLong("ipv6_drops", 0))
     }
 
     private fun canEditProfile(): Boolean {
@@ -330,6 +341,10 @@ class MainActivity : ComponentActivity() {
             appendLine("error=${vpn.lastError}")
             appendLine("detail=${vpn.detail}")
             appendLine("rx=${vpn.down} tx=${vpn.up} dropped=${vpn.dropped}")
+            appendLine("rx_udp_packets=${vpn.wireRx} rx_decrypted_packets=${vpn.decryptedRx}")
+            appendLine("rx_tun_packets=${vpn.writtenRx} rx_crypto_rejects=${vpn.invalidRx}")
+            appendLine("drops_outbound=${vpn.outboundDrops} drops_inbound=${vpn.inboundDrops}")
+            appendLine("drops_ipv6=${vpn.ipv6Drops}")
             appendLine("profile_imported=${profile.available}")
             appendLine("full_tunnel=${profile.full}")
             // Never include private keys, server public keys, or raw .conf.
