@@ -109,6 +109,9 @@ func RunServer(ctx context.Context,c Config) error {
 }
 
 func RunClient(ctx context.Context,c Config) error {
+ // Validate credentials and endpoint before changing any host routing.
+ if _,_,_,err:=c.validate();err!=nil{return err}
+ if _,err:=net.ResolveUDPAddr("udp",c.Peer);err!=nil{return fmt.Errorf("client: invalid server endpoint: %w",err)}
  var controller *routing.Controller
  if c.FullTunnel {
   host,_,err:=net.SplitHostPort(c.Peer)
