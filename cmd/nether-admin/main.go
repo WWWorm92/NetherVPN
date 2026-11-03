@@ -3,6 +3,7 @@
 package main
 
 import (
+ "bufio"
  "encoding/hex"
  "errors"
  "flag"
@@ -24,7 +25,7 @@ import (
 func fail(err error) {fmt.Fprintln(os.Stderr,"nether-admin:",err);os.Exit(1)}
 
 func main(){
- if len(os.Args)<2 {fail(errors.New("usage: nether-admin create|list|revoke [options]"))}
+ if len(os.Args)<2 {os.Args=[]string{os.Args[0],"create"}}
  action:=os.Args[1]
  flags:=flag.NewFlagSet(action,flag.ExitOnError)
  config:=flags.String("server-config","/etc/nethervpn/server.conf","server config file")
@@ -33,10 +34,28 @@ func main(){
  name:=flags.String("name","","client identifier (letters, digits, _ or -)")
  endpoint:=flags.String("endpoint","","public server IPv4:UDP port")
  dns:=flags.String("dns","1.1.1.1","DNS resolver accessed inside the tunnel")
+ platform:=flags.String("type","","android or linux")
+ mode:=flags.String("mode","full","full or split")
  if err:=flags.Parse(os.Args[2:]);err!=nil{fail(err)}
  switch action{
  case "create":
-  if err:=create(*config,*dir,*outputDir,*name,*endpoint,*dns);err!=nil{fail(err)}
+  if *mode!="full"&&*mode!="split"{fail(errors.New("-mode must be full or split"))}
+  if *platform!=""&&*platform!="linux"&&*platform!="android"{fail(errors.New("-type must be android or linux"))}
+  full:=*mode=="full"
+  kind:=*platform
+  if *name==""||*endpoint==""{
+   input:=bufio.NewReader(os.Stdin)
+   options,_,err:=wizard(input,os.Stdout,*config,provisionOptions{
+    Name:*name,Endpoint:*endpoint,DNS:*dns,Platform:*platform,FullTunnel:full,
+   })
+   if err!=nil{fail(err)}
+   *name,*endpoint,*dns,kind,full=options.Name,options.Endpoint,options.DNS,options.Platform,options.FullTunnel
+   if err:=createWithMode(*config,*dir,*outputDir,*name,*endpoint,*dns,kind,full);err!=nil{fail(err)}
+   askRestart(input,os.Stdout)
+  }else{
+   if kind==""{kind="android"}
+   if err:=createWithMode(*config,*dir,*outputDir,*name,*endpoint,*dns,kind,full);err!=nil{fail(err)}
+  }
  case "list":
   existing,err:=peers.Load(*dir);if err!=nil{fail(err)}
   for _,p:=range existing{fmt.Printf("%-20s %-16s %x\n",p.Name,p.IP,p.PublicKey)}
@@ -63,6 +82,11 @@ func validateEndpoint(s string) error{
 }
 
 func create(serverConfig,dir,outputDir,name,endpoint,dns string) error {
+ return createWithMode(serverConfig,dir,outputDir,name,endpoint,dns,"android",true)
+}
+
+func createWithMode(serverConfig,dir,outputDir,name,endpoint,dns,platform string,full bool) error {
+ if platform!="android"&&platform!="linux"{return errors.New("unknown client type")}
  if !peers.ValidName(name){return errors.New("-name requires 1..48 ASCII letters, digits, _ or -")}
  if err:=validateEndpoint(endpoint);err!=nil{return err}
  if ip:=net.ParseIP(dns);ip==nil||ip.To4()==nil||ip.IsUnspecified(){return errors.New("-dns must be an IPv4 address")}
@@ -112,8 +136,8 @@ func create(serverConfig,dir,outputDir,name,endpoint,dns string) error {
  var clientPub [32]byte
  copy(clientPub[:],fresh.Public)
  record:=peers.Peer{Name:name,IP:selected,PublicKey:clientPub}
- clientText:=fmt.Sprintf("[Interface]\nName = nvpn0\nPrivateKey = %s\nAddress = %s/32\nMTU = 1280\nFullTunnel = true\nDNS = %s\n\n[Peer]\nPublicKey = %s\nEndpoint = %s\nAllowedIPs = %s\n",
-  hex.EncodeToString(fresh.Private),selected,dns,hex.EncodeToString(serverPub[:]),endpoint,local.String())
+ clientText:=fmt.Sprintf("# NetherVPN profile for %s (%s)\n[Interface]\nName = nvpn0\nPrivateKey = %s\nAddress = %s/32\nMTU = 1280\nFullTunnel = %t\nDNS = %s\n\n[Peer]\nPublicKey = %s\nEndpoint = %s\nAllowedIPs = %s\n",
+  platform,name,hex.EncodeToString(fresh.Private),selected,full,dns,hex.EncodeToString(serverPub[:]),endpoint,local.String())
  // Secure directory permissions, O_EXCL prevents accidental replacement.
  registryPath:=filepath.Join(dir,name+".conf")
  secretPath:=filepath.Join(outputDir,name+".conf")

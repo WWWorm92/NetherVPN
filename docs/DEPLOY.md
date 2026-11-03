@@ -3,8 +3,8 @@
 The current Linux server supports multiple authenticated clients via a root-owned
 public-key registry. The Android 0.3-alpha app supports opt-in full-tunnel **IPv4**
 with DNS through the VPN; IPv6 is intercepted and intentionally dropped, not
-routed to the Internet. The Linux desktop client remains a limited tunnel to the
-configured server peer address.
+routed to the Internet. The Linux desktop client supports both split tunnel and full IPv4 tunnel
+using the same profile format as Android. See [Linux desktop](DESKTOP.md).
 
 For complete installation, NAT persistence, client creation and rollback use
 [Full-tunnel setup](FULL-TUNNEL.md).

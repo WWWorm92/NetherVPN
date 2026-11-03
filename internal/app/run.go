@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+ "os/exec"
 	"time"
 
 	"github.com/WWWorm92/NetherVPN/internal/transport"
+ "github.com/WWWorm92/NetherVPN/internal/routing"
  "github.com/WWWorm92/NetherVPN/internal/peers"
 	"github.com/WWWorm92/NetherVPN/internal/tun"
 	"github.com/flynn/noise"
@@ -24,6 +26,8 @@ type Config struct {
 	LocalAddress string
 	MTU int
  PeersDir string
+ FullTunnel bool
+ DNS string
 }
 
 func (c Config) validate() (noise.DHKey,[]byte,netip.Addr,error) {
@@ -39,9 +43,9 @@ func (c Config) validate() (noise.DHKey,[]byte,netip.Addr,error) {
 	return identity,pub,addr,nil
 }
 
-// RunClient is a single-peer Linux prototype. It never changes default routes,
-// DNS, NAT or forwarding. With LocalAddress set, it configures its TUN address.
-func runClientOnce(ctx context.Context,c Config) error {
+// runClientOnce opens a new TUN after Noise authentication. In full-tunnel
+// mode the fail-closed policy stays installed during reconnect attempts.
+func runClientOnce(ctx context.Context,c Config,route *routing.Controller) error {
 	identity,pub,source,err:=c.validate()
 	if err!=nil{return err}
 	peer,err:=net.ResolveUDPAddr("udp",c.Peer)
@@ -58,8 +62,21 @@ func runClientOnce(ctx context.Context,c Config) error {
 	if err!=nil{return err}
 	defer device.Close()
 	if err:=configureInterface(device,c.LocalAddress,c.MTU);err!=nil{return err}
-	fmt.Println("client: encrypted tunnel active")
-	return runPumps(ctx,device,conn,peer,secure,c.MTU,source)
+ if c.FullTunnel {
+  if route==nil{return errors.New("client: missing full-tunnel controller")}
+  if err:=route.Up();err!=nil{return fmt.Errorf("client: DNS/routing setup: %w",err)}
+  defer route.Down()
+ } else if source.Is4() {
+  // Generated profiles use /32 addresses: without an explicit peer route,
+  // even split-tunnel mode cannot send packets to the server's TUN address.
+  if output,e:=exec.Command("ip","-4","route","replace",source.String()+"/32","dev",device.Name()).CombinedOutput();e!=nil{
+   return fmt.Errorf("client: split-tunnel peer route: %w: %s",e,output)
+  }
+ }
+ localPrefix,e:=netip.ParsePrefix(c.LocalAddress)
+ if e!=nil{return fmt.Errorf("client: invalid local address: %w",e)}
+ fmt.Println("client: encrypted tunnel active")
+	return runPumps(ctx,device,conn,peer,secure,c.MTU,source,localPrefix.Addr(),c.FullTunnel)
 }
 
 func RunServer(ctx context.Context,c Config) error {
@@ -92,10 +109,23 @@ func RunServer(ctx context.Context,c Config) error {
 }
 
 func RunClient(ctx context.Context,c Config) error {
+ // Validate credentials and endpoint before changing any host routing.
+ if _,_,_,err:=c.validate();err!=nil{return err}
+ if _,err:=net.ResolveUDPAddr("udp",c.Peer);err!=nil{return fmt.Errorf("client: invalid server endpoint: %w",err)}
+ var controller *routing.Controller
+ if c.FullTunnel {
+  host,_,err:=net.SplitHostPort(c.Peer)
+  if err!=nil{return fmt.Errorf("client: invalid full-tunnel endpoint: %w",err)}
+  controller,err=routing.New(c.Interface,host,c.DNS)
+  if err!=nil{return err}
+  if err=controller.Prepare();err!=nil{return err}
+  defer controller.Close()
+  fmt.Println("client: full IPv4 tunnel enabled; server endpoint bypass active; IPv6 fail-closed")
+ }
  delay:=time.Second
  for {
   if ctx.Err()!=nil{return nil}
-  err:=runClientOnce(ctx,c)
+  err:=runClientOnce(ctx,c,controller)
   if ctx.Err()!=nil{return nil}
   if err==nil{return nil}
   fmt.Printf("client: %v; retrying in %s\n",err,delay)

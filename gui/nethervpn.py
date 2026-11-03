@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NetherVPN Linux desktop client. No system routes changed by GUI."""
+"""NetherVPN Linux desktop client, backed by a privileged systemd service."""
 import configparser
 import threading
 import os
@@ -24,7 +24,10 @@ ACCENT = "#43caaf"
 def profile_meta(path):
     cfg = configparser.ConfigParser(interpolation=None)
     cfg.read(path)
-    return cfg.get("Peer", "Endpoint", fallback="—"), cfg.get("Interface", "Name", fallback="nvpn0")
+    return (cfg.get("Peer", "Endpoint", fallback="—"),
+            cfg.get("Interface", "Name", fallback="nvpn0"),
+            cfg.getboolean("Interface", "FullTunnel", fallback=False),
+            cfg.get("Interface", "DNS", fallback="1.1.1.1"))
 
 class App(tk.Tk):
     def __init__(self):
@@ -47,6 +50,7 @@ class App(tk.Tk):
         self.selected_name = None
         self.state = tk.StringVar(value="Не подключено")
         self.endpoint = tk.StringVar(value="Выберите профиль")
+        self.mode_text = tk.StringVar(value="Выберите профиль")
         self.timing = tk.StringVar(value="—")
         self.tx = tk.StringVar(value="—")
         self.rx = tk.StringVar(value="—")
@@ -94,7 +98,9 @@ class App(tk.Tk):
         tk.Label(right, textvariable=self.state, bg=PANEL, fg=TEXT,
                  font=("DejaVu Sans", 17, "bold"), anchor="w").pack(fill="x", padx=24)
         tk.Label(right, textvariable=self.endpoint, bg=PANEL, fg=MUTED,
-                 font=("DejaVu Sans", 10), anchor="w").pack(fill="x", padx=24, pady=(7, 12))
+                 font=("DejaVu Sans", 10), anchor="w").pack(fill="x", padx=24, pady=(7, 3))
+        tk.Label(right, textvariable=self.mode_text, bg=PANEL, fg=ACCENT,
+                 font=("DejaVu Sans", 10, "bold"), anchor="w").pack(fill="x", padx=24, pady=(0, 12))
         actions = tk.Frame(right, bg=PANEL)
         actions.pack(anchor="w", padx=24)
         self.connect_btn = self.button(actions, "Подключить", self.connect, True)
@@ -113,10 +119,10 @@ class App(tk.Tk):
         self.logbox = tk.Text(right, bg="#101827", fg="#c5d4e7", height=7,
                               font=("DejaVu Sans Mono", 9), state="disabled", relief="flat", wrap="word")
         self.logbox.pack(fill="both", expand=True, padx=24, pady=(0, 18))
-        self.log("Приложение запущено. Интернет-маршруты не изменяются.")
+        self.log("Приложение запущено. Full Tunnel управляется системной службой.")
         foot = tk.Frame(self, bg=BG)
         foot.pack(fill="x", padx=28, pady=(12, 15))
-        self.label(foot, "Трафик TUN ≠ подтверждённая доступность сервера. Только лабораторное использование.", 9, MUTED).pack()
+        self.label(foot, "Full Tunnel перехватывает IPv4/DNS всей системы; IPv6 блокируется. При остановке служба возвращает обычную сеть.", 9, MUTED).pack()
 
     def log(self, msg):
         line = time.strftime("%H:%M:%S") + "  " + msg.rstrip() + "\n"
@@ -146,13 +152,16 @@ class App(tk.Tk):
         if path:
             self.selected_name = path.name
             try:
-                peer, _ = profile_meta(path)
+                peer, _, full, dns = profile_meta(path)
                 self.endpoint.set(peer)
+                self.mode_text.set(f"Весь IPv4 через VPN · DNS {dns} · IPv6 заблокирован" if full
+                                   else "Только VPN-сервер · маршруты интернета не меняются")
             except (OSError, ValueError, configparser.Error) as exc:
                 self.endpoint.set("Ошибка конфигурации")
                 self.log(str(exc))
         elif not self.active:
             self.endpoint.set("Выберите профиль")
+            self.mode_text.set("Выберите профиль")
 
     def import_profile(self):
         filename = filedialog.askopenfilename(filetypes=[("NetherVPN конфигурация", "*.conf")])
@@ -186,8 +195,8 @@ class App(tk.Tk):
         path = self.selected()
         if not path:
             return
-        if self.process and self.process.poll() is None:
-            messagebox.showwarning("NetherVPN", "Отключите VPN перед удалением профиля")
+        if self.active == path:
+            messagebox.showwarning("NetherVPN", "Отключите VPN перед удалением активного профиля")
             return
         if messagebox.askyesno("Удалить профиль", "Удалить " + path.stem + "?"):
             path.unlink()
@@ -231,6 +240,19 @@ class App(tk.Tk):
             messagebox.showerror("NetherVPN", "Не найден pkexec")
             return
         # systemd exclusively owns the TUN, so closing GUI cannot strand it.
+        try:
+            _, _, full, _ = profile_meta(profile)
+            if full and not messagebox.askyesno(
+                "Полный VPN-туннель",
+                "Весь IPv4-трафик компьютера и DNS пойдут через NetherVPN. "
+                "IPv6 будет заблокирован; при проблеме отключите VPN через эту кнопку "
+                "или: sudo systemctl stop nethervpn-client.\n\n"
+                "Запустить Full Tunnel?"
+            ):
+                return
+        except (OSError, ValueError, configparser.Error) as exc:
+            messagebox.showerror("Профиль", str(exc))
+            return
         self.active = profile
         self.since = time.monotonic()
         self.previous_counters = None
@@ -271,7 +293,7 @@ class App(tk.Tk):
         if not self.active:
             return False
         try:
-            _, name = profile_meta(self.active)
+            _, name, _, _ = profile_meta(self.active)
             base = Path("/sys/class/net") / name / "statistics"
             tx = int((base / "tx_bytes").read_text())
             rx = int((base / "rx_bytes").read_text())
