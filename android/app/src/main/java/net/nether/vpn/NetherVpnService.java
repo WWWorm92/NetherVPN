@@ -404,7 +404,7 @@ public final class NetherVpnService extends VpnService {
                 failedStage = "";
                 publish(settings.fullTunnel ? "Подключено · весь IPv4 через VPN" : "Подключено · только " + profile.peerIp, "connected");
                 delay = 1;
-                transfer(udp, secure, device, profile, settings.fullTunnel);
+                transfer(udp, secure, device, profile, settings.fullTunnel, upstream);
             } catch (Exception error) {
                 if (running) {
                     failedStage = stage;
@@ -472,7 +472,7 @@ public final class NetherVpnService extends VpnService {
     }
 
     private void transfer(DatagramSocket udp, NoiseTransport secure, ParcelFileDescriptor device,
-                          VpnProfile profile, boolean fullTunnel) throws Exception {
+                          VpnProfile profile, boolean fullTunnel, Network upstream) throws Exception {
         FileInputStream input = new FileInputStream(device.getFileDescriptor());
         FileOutputStream output = new FileOutputStream(device.getFileDescriptor());
         final java.util.concurrent.atomic.AtomicReference<Throwable> outgoingError =
