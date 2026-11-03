@@ -9,143 +9,99 @@ import (
  "os/exec"
  "strings"
 
+ "github.com/WWWorm92/NetherVPN/internal/peers"
  "github.com/WWWorm92/NetherVPN/internal/profile"
 )
 
-func sharedReader(in io.Reader)*bufio.Reader{
- if reader,ok:=in.(*bufio.Reader);ok{return reader}
- return bufio.NewReader(in)
+type clientOptions struct{Name,Endpoint string}
+func ask(r *bufio.Reader,out io.Writer,label,def string)(string,error){
+ if def!=""{fmt.Fprintf(out,"%s [%s]: ",label,def)}else{fmt.Fprintf(out,"%s: ",label)}
+ value,err:=r.ReadString('\n')
+ if err!=nil&&!(err==io.EOF&&value!=""){return "",err}
+ value=strings.TrimSpace(value);if value==""{value=def}
+ return value,nil
 }
-
-type provisionOptions struct {
- Name string
- Endpoint string
- DNS string
- Platform string
- FullTunnel bool
-}
-
-// PublicIPDefault checks the address selected by the kernel for outbound IPv4.
-// It does not send packets and MUST NOT be mistaken for the public IP behind NAT.
-func publicIPDefault()string{
- conn,e:=net.Dial("udp4","1.1.1.1:53")
- if e!=nil{return ""}
+func defaultEndpoint(config string)string{
+ cfg,err:=profile.Load(config)
+ if err!=nil{return ""}
+ port:=cfg.ListenPort;if port==""{port="51830"}
+ if cfg.ListenAddress!=""&&cfg.ListenAddress!="0.0.0.0"{
+  ip:=net.ParseIP(cfg.ListenAddress)
+  if ip!=nil&&ip.To4()!=nil&&!ip.IsPrivate()&&!ip.IsLoopback(){return net.JoinHostPort(cfg.ListenAddress,port)}
+ }
+ // Kernel-selected source address may not equal the public address behind NAT.
+ conn,err:=net.Dial("udp4","1.1.1.1:53")
+ if err!=nil{return ""}
  defer conn.Close()
  addr,ok:=conn.LocalAddr().(*net.UDPAddr)
- if !ok||addr.IP==nil||addr.IP.IsLoopback()||addr.IP.IsPrivate()||addr.IP.IsUnspecified(){return ""}
- return addr.IP.String()
+ if ok&&addr.IP!=nil&&!addr.IP.IsPrivate()&&!addr.IP.IsLoopback(){return net.JoinHostPort(addr.IP.String(),port)}
+ return ""
 }
-
-func ask(reader *bufio.Reader, out io.Writer, label, fallback string)(string,error){
- if fallback!=""{fmt.Fprintf(out,"%s [%s]: ",label,fallback)} else {fmt.Fprintf(out,"%s: ",label)}
- line,e:=reader.ReadString('\n')
- if e!=nil && !(e==io.EOF&&line!=""){return "",e}
- val:=strings.TrimSpace(line)
- if val==""{val=fallback}
- return val,nil
+func askClient(r *bufio.Reader,out io.Writer,config,name,endpoint string)(clientOptions,error){
+ opts:=clientOptions{Name:name,Endpoint:endpoint}
+ for opts.Name=="" {
+  value,err:=ask(r,out,"Имя клиента (латиница, цифры, - или _)","")
+  if err!=nil{return opts,err}
+  if peers.ValidName(value){opts.Name=value}else{fmt.Fprintln(out,"Некорректное имя")}
+ }
+ for opts.Endpoint==""{
+  value,err:=ask(r,out,"Публичный IPv4 сервера:UDP-порт",defaultEndpoint(config))
+  if err!=nil{return opts,err}
+  if err=validateEndpoint(value);err==nil{opts.Endpoint=value}else{fmt.Fprintln(out,"Нужен IPv4:порт, доступный извне")}
+ }
+ fmt.Fprintf(out,"\nИмя: %s\nСервер: %s\nФайл будет одинаковым для Android и Linux.\n",opts.Name,opts.Endpoint)
+ ok,err:=ask(r,out,"Создать клиента? (да/нет)","да")
+ if err!=nil{return opts,err}
+ if !accepted(ok){return opts,fmt.Errorf("создание отменено")}
+ return opts,nil
 }
-
-// Wizard collects only configuration choices. The caller performs the
-// filesystem mutation and the optional, explicitly confirmed service restart.
-func wizard(in io.Reader,out io.Writer,config string,defaults provisionOptions)(provisionOptions,bool,error){
- reader:=sharedReader(in)
- fmt.Fprintln(out,"")
- fmt.Fprintln(out,"╔════════ NetherVPN · мастер создания клиента ════════╗")
- fmt.Fprintln(out,"Ключи будут созданы автоматически и сохранены с правами 0600.")
- var opts=defaults
- if opts.Platform==""{
-  for {
-   value,e:=ask(reader,out,"Тип устройства: 1 — Android, 2 — Linux","1")
-   if e!=nil{return opts,false,e}
-   switch strings.ToLower(value){
-   case "1","android":opts.Platform="android"
-   case "2","linux":opts.Platform="linux"
-   default:fmt.Fprintln(out,"Введите 1 или 2.");continue
-   }
-   break
-  }
- }
- if opts.Name==""{
-  for {
-   name,e:=ask(reader,out,"Имя устройства (латиница, цифры, - или _)",opts.Platform)
-   if e!=nil{return opts,false,e}
-   if peersNameValid(name){opts.Name=name;break}
-   fmt.Fprintln(out,"Недопустимое имя: используйте 1–48 символов [A-Za-z0-9_-].")
-  }
- }
- if opts.Platform!="android"&&opts.Platform!="linux"{return opts,false,fmt.Errorf("unknown platform: %s",opts.Platform)}
- for {
-  value,e:=ask(reader,out,"Режим: 1 — весь IPv4 через VPN, 2 — только VPN-сеть","1")
-  if e!=nil{return opts,false,e}
-  switch strings.ToLower(value){
-  case "1","full","yes":opts.FullTunnel=true
-  case "2","split","no":opts.FullTunnel=false
-  default:fmt.Fprintln(out,"Введите 1 или 2.");continue
-  }
-  break
- }
- if opts.Endpoint==""{
-  configData,err:=profile.Load(config)
-  if err!=nil{return opts,false,fmt.Errorf("server profile: %w",err)}
-  port:=configData.ListenPort
-  if port==""{port="51830"}
-  ip:=publicIPDefault()
-  candidate:=""
-  if ip!=""{candidate=net.JoinHostPort(ip,port)}
-  for{
-   value,e:=ask(reader,out,"Публичный IPv4 сервера и UDP-порт",candidate)
-   if e!=nil{return opts,false,e}
-   if err=validateEndpoint(value);err==nil{opts.Endpoint=value;break}
-   fmt.Fprintln(out,"Введите доступный извне числовой IPv4:порт (например, 77.221.132.76:51830).")
-  }
- }
- if opts.FullTunnel {
-  if opts.DNS==""{opts.DNS="1.1.1.1"}
-  for {
-   value,e:=ask(reader,out,"DNS-сервер внутри VPN",opts.DNS)
-   if e!=nil{return opts,false,e}
-   ip:=net.ParseIP(value)
-   if ip!=nil&&ip.To4()!=nil&&!ip.IsUnspecified(){opts.DNS=value;break}
-   fmt.Fprintln(out,"Нужен числовой IPv4 DNS-сервера.")
-  }
- } else if opts.DNS=="" {opts.DNS="1.1.1.1"}
- // Compare the public endpoint with any explicit server bind address.
- // A mismatch may be valid behind NAT, but it deserves operator attention.
- if configuration,e:=profile.Load(config);e==nil && configuration.ListenAddress!="" &&
-    configuration.ListenAddress!="0.0.0.0"{
-  host,_,splitErr:=net.SplitHostPort(opts.Endpoint)
-  if splitErr==nil && host!=configuration.ListenAddress{
-   fmt.Fprintf(out,"ВНИМАНИЕ: сервер слушает %s, а профиль указывает %s. Проверьте NAT/переадресацию порта.\n",
-    configuration.ListenAddress,host)
-  }
- }
- fmt.Fprintf(out,"\nУстройство: %s (%s)\nСервер: %s\nРежим: %s\n",
-  opts.Name,opts.Platform,opts.Endpoint,map[bool]string{true:"Полный IPv4 + DNS",false:"Только адрес VPN-сервера"}[opts.FullTunnel])
- confirm,e:=ask(reader,out,"Создать профиль и зарегистрировать публичный ключ? да/нет","да")
- if e!=nil{return opts,false,e}
- if confirm!="да"&&strings.ToLower(confirm)!="yes"&&strings.ToLower(confirm)!="y"{return opts,false,fmt.Errorf("creation cancelled")}
- return opts,true,nil
+func accepted(s string)bool{
+ return s=="да"||strings.EqualFold(s,"yes")||strings.EqualFold(s,"y")
 }
-
-func peersNameValid(name string)bool{
- if len(name)<1||len(name)>48{return false}
- for _,ch:=range name{
-  if !(ch>='a'&&ch<='z'||ch>='A'&&ch<='Z'||ch>='0'&&ch<='9'||ch=='-'||ch=='_'){return false}
- }
- return true
-}
-
-func askRestart(in io.Reader,out io.Writer){
- reader:=sharedReader(in)
- fmt.Fprintln(out,"Важно: применение нового клиента кратковременно отключит действующие VPN-сессии.")
- answer,e:=ask(reader,out,"Перезапустить службу nethervpn-server сейчас? да/нет","да")
- if e!=nil{fmt.Fprintln(out,"Перезапуск не выполнен. Вручную: sudo systemctl restart nethervpn-server");return}
- if answer!="да"&&strings.ToLower(answer)!="yes"&&strings.ToLower(answer)!="y"{
-  fmt.Fprintln(out,"Клиент зарегистрирован. Для активации: sudo systemctl restart nethervpn-server")
+func askRestart(r *bufio.Reader,out io.Writer){
+ fmt.Fprintln(out,"Перезапуск кратковременно отключит действующие VPN-сессии.")
+ value,err:=ask(r,out,"Активировать изменения перезапуском nethervpn-server? (да/нет)","да")
+ if err!=nil||!accepted(value){
+  fmt.Fprintln(out,"Для применения: sudo systemctl restart nethervpn-server")
   return
  }
- cmd:=exec.Command("systemctl","restart","nethervpn-server")
- if output,e:=cmd.CombinedOutput();e!=nil{
-  fmt.Fprintf(os.Stderr,"Не удалось перезапустить службу: %v %s\n",e,strings.TrimSpace(string(output)))
- }else{fmt.Fprintln(out,"Сервер перезапущен. Клиент активирован.")}
+ output,err:=exec.Command("systemctl","restart","nethervpn-server").CombinedOutput()
+ if err!=nil{fmt.Fprintf(out,"Ошибка перезапуска: %v %s\n",err,output)}else{fmt.Fprintln(out,"Изменения применены")}
+}
+func runMenu(r *bufio.Reader,out io.Writer,config,dir,outputDir string)error{
+ for{
+  fmt.Fprintln(out,"\n╔══════ NetherVPN · управление сервером ══════╗")
+  fmt.Fprintln(out,"  1. Создать клиента")
+  fmt.Fprintln(out,"  2. Список клиентов")
+  fmt.Fprintln(out,"  3. Удалить клиента")
+  fmt.Fprintln(out,"  4. Информация о сервере")
+  fmt.Fprintln(out,"  5. Выход")
+  choice,err:=ask(r,out,"Выберите действие","5")
+  if err!=nil{return err}
+  switch choice{
+  case "1":
+   opts,err:=askClient(r,out,config,"","")
+   if err!=nil{fmt.Fprintf(out,"%v\n",err);continue}
+   if err=create(config,dir,outputDir,opts.Name,opts.Endpoint);err!=nil{fmt.Fprintf(out,"Ошибка: %v\n",err);continue}
+   askRestart(r,out)
+  case "2":
+   if err:=listClients(out,dir);err!=nil{fmt.Fprintf(out,"Ошибка: %v\n",err)}
+  case "3":
+   name,err:=ask(r,out,"Имя клиента для удаления","")
+   if err!=nil{return err}
+   if !peers.ValidName(name){fmt.Fprintln(out,"Некорректное имя");continue}
+   confirmation,err:=ask(r,out,"Отозвать ключ и удалить экспорт? (да/нет)","нет")
+   if err!=nil{return err}
+   if !accepted(confirmation){fmt.Fprintln(out,"Отменено");continue}
+   if err:=revoke(dir,outputDir,name);err!=nil{fmt.Fprintf(out,"Ошибка: %v\n",err);continue}
+   fmt.Fprintf(out,"Клиент %s отозван\n",name)
+   askRestart(r,out)
+  case "4":
+   cfg,err:=profile.Load(config)
+   if err!=nil{fmt.Fprintf(out,"Ошибка чтения конфигурации: %v\n",err);continue}
+   fmt.Fprintf(out,"Интерфейс: %s\nVPN адрес: %s\nUDP-порт: %s\nПриватный ключ не отображается.\n",cfg.Interface,cfg.Address,cfg.ListenPort)
+  case "5","0":return nil
+  default:fmt.Fprintln(out,"Неизвестное действие")
+  }
+ }
 }
