@@ -2,6 +2,10 @@
 Description=NetherVPN desktop client
 After=network-online.target
 Wants=network-online.target
+# Avoid endless systemd restarts on an invalid profile, occupied TUN,
+# missing dependencies or unexpected routing failures.
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple

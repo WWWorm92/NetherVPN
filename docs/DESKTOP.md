@@ -93,3 +93,46 @@ If Split Tunnel works but Full Tunnel does not, check these separately:
 If the Linux workstation is also running `nethervpn-server`, do not enable host-wide Full Tunnel there. The desktop helper now refuses this configuration because it could disrupt gateway routing. It also refuses sharing the same TUN between server and client.
 
 **Not yet end-to-end validated:** the fixes add route checks and correct default-route source selection, but a successful CI test alone does not establish the precise cause on a specific machine or confirm live Internet egress.
+
+## Fresh Linux policy tables and pre-existing TUN interfaces
+
+On a new Linux installation, `ip -4 route show table 51830` and
+`ip -6 route show table 51830` may exit with status 2 and print
+`FIB table does not exist`. **This is expected before the first Full
+Tunnel connection.** NetherVPN now interprets this exact response as an
+available table and creates its own fail-closed routes. Other errors (for
+example, operation not permitted) still prevent startup. The systemd client
+unit is rate-limited to five failed starts per minute to avoid log spam and
+infinite restart cycles.
+
+If `ip -br addr show nvpn0` shows an address **before** starting the new
+client, another VPN session or persistent TUN already owns the name. Do not
+blindly delete the interface, particularly if it is used for remote access.
+Check the active gateway/client services and TUN users:
+
+```bash
+systemctl is-active nethervpn-server nethervpn-client
+sudo fuser -v /dev/net/tun
+ip -br addr show nvpn0
+```
+
+Stop the other session through its own service manager, or edit the client's
+`[Interface] Name` to an unused TUN interface (for example `nvpn1`) and
+reimport the profile. A name change does not modify either cryptographic key.
+The desktop client refuses to change system routes if its TUN name is already
+present, instead of failing later with `TUNSETIFF: device or resource busy`.
+
+After deploying the fix from `main`:
+
+```bash
+cd ~/NetherVPN
+git pull --ff-only
+sudo systemctl stop nethervpn-client
+bash scripts/install-desktop.sh
+sudo systemctl reset-failed nethervpn-client
+python3 gui/nethervpn.py
+```
+
+Do not enable Full Tunnel until the initial table check and existing TUN
+conflict are cleared. A separate issue such as gateway NAT or DNS can still
+require diagnosis after the client begins forwarding packets.

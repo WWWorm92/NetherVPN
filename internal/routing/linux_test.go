@@ -13,6 +13,9 @@ type fakeRunner struct{
  rules string
  routes string
  routeGet string
+ missing4 bool
+ missing6 bool
+ showError string
 }
 func (f *fakeRunner) Run(name string,args ...string)(string,error){
  cmd:=name+" "+strings.Join(args," ")
@@ -23,7 +26,16 @@ func (f *fakeRunner) Run(name string,args ...string)(string,error){
   if f.routeGet!=""{return f.routeGet,nil}
   return "1.1.1.1 dev nvpn0 src 10.77.0.3",nil
  }
- if strings.Contains(cmd,"route show table"){return f.routes,nil}
+ if strings.Contains(cmd,"route show table"){
+  if f.showError!=""{return f.showError,errors.New("ip exit status 2")}
+  if strings.Contains(cmd," -4 ")&&f.missing4 {
+   return "Error: ipv4: FIB table does not exist.\nDump terminated",errors.New("ip exit status 2")
+  }
+  if strings.Contains(cmd," -6 ")&&f.missing6 {
+   return "Error: ipv6: FIB table does not exist.\nDump terminated",errors.New("ip exit status 2")
+  }
+  return f.routes,nil
+ }
  return "",nil
 }
 func TestFullTunnelPolicy(t *testing.T){
@@ -88,4 +100,65 @@ func TestSetLocalAddress(t *testing.T){
  for _,raw:=range []string{"", "fe80::2/64", "0.0.0.0/32", "10.77.0.3"}{
   if err:=c.SetLocalAddress(raw);err==nil{t.Errorf("accepted %q",raw)}
  }
+}
+
+func TestUninitializedRoutingTableIsFree(t *testing.T){
+ c,err:=New("nvpn0","77.221.132.76","1.1.1.1")
+ if err!=nil{t.Fatal(err)}
+ f:=&fakeRunner{missing4:true,missing6:true}
+ c.Runner=f
+ // Regression: on a fresh Linux machine 'ip route show table 51830'
+ // fails with status 2 instead of returning an empty list.
+ if err:=c.Prepare();err!=nil{t.Fatalf("missing FIB must not block initial Full Tunnel: %v",err)}
+ if err:=c.Up();err!=nil{t.Fatalf("should configure VPN route after table allocation: %v",err)}
+ c.Close()
+ observed:=strings.Join(f.calls,"\n")
+ for _,expected:=range []string{
+  "ip -4 route show table 51830",
+  "ip -6 route show table 51830",
+  "ip -4 route add unreachable default table 51830 metric 4278",
+  "ip -6 route add unreachable default table 51830 metric 4278",
+ }{
+  if !strings.Contains(observed,expected){t.Errorf("missing command %q",expected)}
+ }
+}
+
+func TestUninitializedFIBRecognizesOnlyExactError(t *testing.T){
+ good:=[]string{
+  "Error: ipv4: FIB table does not exist.\nDump terminated\n",
+  "Error: ipv6: FIB table does not exist.\nDump terminated",
+  "Error: FIB table does not exist.",
+ }
+ for _,message:=range good{
+  if !missingFIBTable(message){t.Errorf("did not recognize missing FIB: %q",message)}
+ }
+ bad:=[]string{
+  "",
+  "Error: Operation not permitted",
+  "Error: ipv4: FIB table does not exist.\nOperation not permitted",
+  "unrelated error mentions FIB table does not exist.",
+  "Error: ipv6: FIB table does not exist.\nError: netlink failed",
+ }
+ for _,message:=range bad{
+  if missingFIBTable(message){t.Errorf("incorrectly ignored error: %q",message)}
+ }
+}
+
+func TestRoutingCheckDoesNotIgnoreOtherFailures(t *testing.T){
+ c,_:=New("nvpn0","77.221.132.76","1.1.1.1")
+ f:=&fakeRunner{showError:"Error: Operation not permitted"}
+ c.Runner=f
+ if err:=c.Prepare();err==nil{t.Fatal("netlink permission error was ignored")}
+ for _,cmd:=range f.calls{
+  if strings.Contains(cmd,"route add")||strings.Contains(cmd,"rule add"){
+   t.Fatalf("changed routes despite failed preflight: %v",f.calls)
+  }
+ }
+}
+
+func TestRoutingCheckRejectsExistingTable(t *testing.T){
+ c,_:=New("nvpn0","77.221.132.76","1.1.1.1")
+ f:=&fakeRunner{routes:"default via 192.0.2.1 dev eth0"}
+ c.Runner=f
+ if err:=c.checkFree();!errors.Is(err,errExisting){t.Fatalf("table ownership collision not rejected: %v",err)}
 }
