@@ -23,13 +23,13 @@ import java.util.Locale
 
 /** Native NetherVPN dashboard, matched to the Linux client's visual language. */
 class MainActivity : Activity() {
-    private val navy = Color.rgb(10, 18, 31)
-    private val card = Color.rgb(20, 34, 51)
-    private val raised = Color.rgb(29, 48, 69)
-    private val mint = Color.rgb(58, 217, 184)
-    private val white = Color.rgb(241, 247, 255)
-    private val muted = Color.rgb(157, 179, 201)
-    private val amber = Color.rgb(255, 192, 103)
+    private val navy = Color.rgb(16, 17, 21)
+    private val card = Color.rgb(29, 30, 36)
+    private val raised = Color.rgb(41, 43, 51)
+    private val mint = Color.rgb(255, 177, 92)
+    private val white = Color.rgb(246, 247, 249)
+    private val muted = Color.rgb(161, 164, 174)
+    private val amber = Color.rgb(255, 177, 92)
     private val red = Color.rgb(255, 114, 130)
     private val handler = Handler(Looper.getMainLooper())
     private val vpnRequest = 21
@@ -61,51 +61,9 @@ class MainActivity : Activity() {
             setTextColor(color)
             if (bold) setTypeface(Typeface.DEFAULT, Typeface.BOLD)
         }
-    private fun caption(value: String) = text(value, 11f, muted, true).apply {
-        letterSpacing = .09f
-    }
-    private fun panel() = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        background = shape(card, 22)
-        setPadding(dp(19), dp(18), dp(19), dp(19))
-    }
     private fun space(parent: LinearLayout, size: Int) {
         parent.addView(View(this), LinearLayout.LayoutParams(1, dp(size)))
     }
-    private fun addCard(parent: LinearLayout, item: LinearLayout) {
-        parent.addView(item, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
-    }
-    private fun button(label: String, primary: Boolean = false, click: () -> Unit) =
-        Button(this).apply {
-            text = label
-            isAllCaps = false
-            textSize = 14f
-            setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-            setTextColor(if (primary) navy else white)
-            background = shape(if (primary) mint else raised, 13)
-            minHeight = dp(50)
-            minimumHeight = dp(50)
-            setOnClickListener { click() }
-        }
-    private fun stat(label: String, value: TextView) = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        background = shape(raised, 14)
-        setPadding(dp(12), dp(10), dp(10), dp(13))
-        addView(caption(label))
-        space(this, 5)
-        addView(value)
-    }
-    private fun statRow(left: LinearLayout, right: LinearLayout) =
-        LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(left, LinearLayout.LayoutParams(0, -2, 1f).apply {
-                rightMargin = dp(5)
-            })
-            addView(right, LinearLayout.LayoutParams(0, -2, 1f).apply {
-                leftMargin = dp(5)
-            })
-        }
-
     private val updater = object : Runnable {
         override fun run() {
             updateStatus()
