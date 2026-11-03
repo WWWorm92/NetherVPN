@@ -18,7 +18,7 @@ sudo install -d -o root -g root -m 0700 /etc/nethervpn
 sudo install -o root -g root -m 0644 packaging/systemd/nethervpn-client.service /etc/systemd/system/nethervpn-client.service
 sudo systemctl daemon-reload
 mkdir -p "$HOME/.local/share/applications"
-printf '[Desktop Entry]\nType=Application\nName=NetherVPN\nComment=Experimental Linux VPN client\nExec=/usr/bin/python3 %s/gui/nethervpn.py\nTerminal=false\nCategories=Network;\n' "$ROOT" > "$HOME/.local/share/applications/nethervpn.desktop"
+printf '[Desktop Entry]\nType=Application\nName=NetherVPN\nComment=Experimental Linux VPN client\nExec=/usr/bin/python3 %s/gui/nethervpn.py\nIcon=%s/assets/nethervpn.svg\nTerminal=false\nCategories=Network;\n' "$ROOT" "$ROOT" > "$HOME/.local/share/applications/nethervpn.desktop"
 chmod 0644 "$HOME/.local/share/applications/nethervpn.desktop"
 echo 'NetherVPN installed in application menu.'
 if ! command -v resolvectl >/dev/null; then

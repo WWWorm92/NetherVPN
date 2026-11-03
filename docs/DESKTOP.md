@@ -187,3 +187,37 @@ of NetherVPN. This fix addresses the packet-triggered reconnect loop, **not**
 all coexistence, DNS, upstream gateway forwarding/NAT or firewall issues.
 When confirming Full Tunnel, first verify a stable TUN and a kernel default
 route through `nvpn0`; then test the real external IPv4 and DNS.
+
+## Redesigned Linux dashboard (0.5 visual update)
+
+The Tkinter dashboard is now larger, vertically scrollable, and uses the same
+midnight-navy/mint design language as Android. It contains a dedicated
+profile sidebar, connection hero, status indicator, one-click actions, traffic
+cards, Full/Split selection cards, local DNS, boot autoconnect and event
+journal. The dashboard supports smaller laptop displays without hiding the
+bottom settings and retains one polkit authorization per connect/disconnect.
+
+The status indicator is linked to the **systemd client state and actual TUN
+interface**, rather than marking a selected radio button or a successful
+`pkexec` call as proof of connectivity. When reopened while the VPN is
+already running, the UI indicates an existing background systemd connection.
+For a confirmed encrypted session use the service log and test the real
+route/IP; TUN existence alone is not independent cryptographic verification.
+
+Install or refresh the desktop (existing secret profiles are preserved):
+
+```bash
+cd ~/NetherVPN
+git pull --ff-only
+sudo systemctl stop nethervpn-client
+bash scripts/install-desktop.sh
+python3 gui/nethervpn.py
+```
+
+To see full encrypted tunnel status and dropped IPv6 packets:
+
+```bash
+sudo journalctl -u nethervpn-client -n 40 --no-pager
+ip -4 route get 1.1.1.1
+curl -4 --max-time 8 https://api.ipify.org
+```
