@@ -356,9 +356,8 @@ private fun NetherScreen(
                 Spacer(Modifier.height(6.dp))
                 BrandHeader()
                 when (selected) {
-                    0 -> HomePage(vpn, profile, onPower, { onTab(1) }, { onTab(3) })
-                    1 -> ServersPage(vpn, profile, { onTab(2) }, { onTab(3) })
-                    2 -> ProfilesPage(vpn, profile, onImport, onPaste, onDelete)
+                    0 -> HomePage(vpn, profile, onPower, { onTab(1) }, { onTab(2) })
+                    1 -> ProfilesPage(vpn, profile, onImport, onPaste, onDelete)
                     else -> SettingsPage(profile, vpn, onSave, onSystemVpn)
                 }
                 Spacer(Modifier.height(18.dp))
@@ -522,23 +521,6 @@ private fun ClickCard(eyebrow: String, title: String, subtitle: String, onClick:
 }
 
 @Composable
-private fun ServersPage(vpn: VpnUi, profile: ProfileUi,
-                        onProfiles: () -> Unit, onSettings: () -> Unit) {
-    Heading("Сервер", "Адрес вашего VPN-шлюза")
-    ClickCard("ТЕКУЩИЙ СЕРВЕР",
-        if (profile.available) profile.host else "Сервер не добавлен",
-        if (profile.available) "UDP ${profile.port} · IP клиента ${profile.localIp}"
-        else "Добавьте конфигурацию, созданную на сервере", onProfiles)
-    Text("Состояние: ${vpn.phase} · ${vpn.detail}", color = Secondary, fontSize = 12.sp)
-    ClickCard("МАРШРУТИЗАЦИЯ",
-        if (profile.full) "Полный туннель" else "Раздельный туннель",
-        "DNS: ${profile.dns}", onSettings)
-    Text("Для каждого устройства используйте отдельный профиль и ключ. " +
-        "Страна и задержка не отображаются без реальных измерений.",
-        color = Secondary, fontSize = 12.sp, lineHeight = 18.sp)
-}
-
-@Composable
 private fun ProfilesPage(vpn: VpnUi, profile: ProfileUi,
                          onImport: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit) {
     Heading("Профили", "Безопасный импорт конфигурации")
@@ -612,7 +594,7 @@ private fun Heading(title: String, subtitle: String) {
 
 @Composable
 private fun BottomTabs(selected: Int, onTab: (Int) -> Unit) {
-    val tabs = listOf("⌂" to "Главная", "▤" to "Сервер", "▣" to "Профиль", "⚙" to "Настройки")
+    val tabs = listOf("⌂" to "Главная", "▣" to "Профили", "⚙" to "Настройки")
     Row(Modifier.fillMaxWidth()
         .background(Night.copy(alpha = .97f))
         .padding(horizontal = 10.dp, vertical = 8.dp)
