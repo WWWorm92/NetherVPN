@@ -124,112 +124,143 @@ class App(tk.Tk):
         return chip
 
     def _ui(self):
-        """Original NetherVPN layout: soft connection capsule and quiet controls."""
-        top = tk.Frame(self, bg=BG)
-        top.pack(fill="x", padx=26, pady=(24, 5))
+        """Wide desktop dashboard with an independent NetherVPN identity.
+
+        A dedicated sidebar and compact control column are intentionally
+        different from the Android layout. VPN state is sourced from systemd
+        and TUN instead of being inferred from decorative controls.
+        """
+        self.geometry("930x720")
+        self.minsize(790, 650)
+        self.configure(bg=BG)
+
+        shell = tk.Frame(self, bg=BG)
+        shell.pack(fill="both", expand=True)
+
+        sidebar = tk.Frame(shell, bg="#0c1828", width=236)
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)
+        brand = tk.Frame(sidebar, bg="#0c1828")
+        brand.pack(fill="x", padx=24, pady=(33, 47))
         self._header_icon = self._app_icon.subsample(2, 2)
-        tk.Label(top, image=self._header_icon, bg=BG, bd=0).pack(
-            side="left", padx=(0, 11))
-        brand = tk.Frame(top, bg=BG)
-        brand.pack(side="left")
-        self.label(brand, "NetherVPN", 18, TEXT, "bold").pack(anchor="w")
-        self.label(brand, "Безопасное подключение", 9, MUTED).pack(anchor="w")
-        self.label(top, "LINUX", 9, ACCENT, "bold").pack(
-            side="right", pady=(8, 0))
+        tk.Label(brand, image=self._header_icon, bg="#0c1828", bd=0).pack(side="left")
+        tk.Label(brand, text="NetherVPN", bg="#0c1828", fg=TEXT,
+                 font=("DejaVu Sans", 16, "bold")).pack(side="left", padx=(10, 0))
 
-        center = tk.Frame(self, bg=BG)
-        center.pack(fill="both", expand=True, padx=17)
-        self.label(center, "ЗАЩИТА СОЕДИНЕНИЯ", 9, MUTED, "bold").pack(
-            anchor="w", padx=12, pady=(16, 0))
+        def side_action(label, callback, selected=False):
+            btn = tk.Button(sidebar, text=label, command=callback, anchor="w",
+                            bg="#153e49" if selected else "#0c1828",
+                            activebackground="#214c5a", fg=ACCENT if selected else TEXT,
+                            activeforeground=TEXT, relief="flat", bd=0,
+                            font=("DejaVu Sans", 11, "bold" if selected else "normal"),
+                            padx=24, pady=14, cursor="hand2")
+            btn.pack(fill="x", padx=13, pady=3)
+            return btn
 
-        # Classic central power control restored; quieter two-layer geometry.
-        self.connect_btn = tk.Canvas(center, width=188, height=188, bg=BG,
-                                     bd=0, highlightthickness=0,
-                                     cursor="hand2", takefocus=1)
-        self.connect_btn.pack(expand=True, pady=(6, 1))
+        side_action("⌂   Подключение", lambda: None, True)
+        side_action("▤   Серверы", self.open_profiles)
+        side_action("◫   Профили", self.open_profiles)
+        side_action("▥   Статистика", self.open_diagnostics)
+        side_action("⚙   Настройки", self.open_settings)
+        side_action("ⓘ   О программе", self.open_about)
+
+        side_bottom = tk.Frame(sidebar, bg="#0c1828")
+        side_bottom.pack(side="bottom", fill="x", padx=24, pady=25)
+        self.sidebar_service = tk.Label(side_bottom, text="●  Проверка службы",
+                                        bg="#0c1828", fg=MUTED,
+                                        font=("DejaVu Sans", 10), anchor="w")
+        self.sidebar_service.pack(anchor="w")
+        tk.Label(side_bottom, text="NetherVPN · Linux", bg="#0c1828", fg=MUTED,
+                 font=("DejaVu Sans", 9)).pack(anchor="w", pady=(9, 0))
+
+        main = tk.Frame(shell, bg=BG)
+        main.pack(side="left", fill="both", expand=True, padx=32, pady=23)
+        header = tk.Frame(main, bg=BG)
+        header.pack(fill="x")
+        self.label(header, "NetherVPN", 23, TEXT, "bold").pack(anchor="w")
+        self.label(header, "Приватная сеть под вашим контролем", 11, MUTED).pack(
+            anchor="w", pady=(3, 0))
+
+        core = tk.Frame(main, bg=BG)
+        core.pack(fill="both", expand=True)
+        self.connect_btn = tk.Canvas(core, width=270, height=268, bg=BG, bd=0,
+                                     highlightthickness=0, cursor="hand2", takefocus=1)
+        self.connect_btn.pack(pady=(12, 0))
         self.outer_ring = self.connect_btn.create_oval(
-            13, 13, 175, 175, outline=RAISED, width=7)
+            19, 17, 251, 249, outline=RAISED, width=7)
         self.inner_ring = self.connect_btn.create_oval(
-            22, 22, 166, 166, outline="#38516a", width=1)
-        self.power_text = self.connect_btn.create_text(
-            94, 89, text="Подключить", fill=TEXT,
-            font=("DejaVu Sans", 13, "bold"))
-        self.power_subtext = self.connect_btn.create_text(
-            94, 115, text="Защищённый канал", fill=MUTED,
-            font=("DejaVu Sans", 9))
+            31, 29, 239, 237, outline="#31566a", width=1)
         self._accent_line = self.connect_btn.create_arc(
-            13, 13, 175, 175, start=66, extent=48,
-            style="arc", outline=ACCENT, width=7)
+            19, 17, 251, 249, start=72, extent=40, style="arc",
+            outline=ACCENT, width=7)
+        self.power_text = self.connect_btn.create_text(
+            135, 124, text="Подключить", fill=TEXT,
+            font=("DejaVu Sans", 19, "bold"))
+        self.power_subtext = self.connect_btn.create_text(
+            135, 156, text="Нажмите для включения", fill=MUTED,
+            font=("DejaVu Sans", 10))
         self.connect_btn.bind("<Button-1>", lambda _e: self.toggle_connection())
         self.connect_btn.bind("<Return>", lambda _e: self.toggle_connection())
         self.connect_btn.bind("<space>", lambda _e: self.toggle_connection())
 
         self.status_badge = tk.Label(
-            center, textvariable=self.status_tag, bg=BG, fg=MUTED,
-            font=("DejaVu Sans", 10, "bold"))
-        self.status_badge.pack(pady=(4, 5))
-        tk.Label(center, textvariable=self.status_hint, bg=BG, fg=MUTED,
-                 font=("DejaVu Sans", 9)).pack(pady=(0, 10))
+            core, textvariable=self.status_tag, bg=BG, fg=MUTED,
+            font=("DejaVu Sans", 11, "bold"))
+        self.status_badge.pack(pady=(3, 0))
+        tk.Label(core, textvariable=self.status_hint, bg=BG, fg=MUTED,
+                 font=("DejaVu Sans", 10)).pack(pady=(4, 11))
 
-        metrics = tk.Frame(self, bg=PANEL, padx=13, pady=15)
-        metrics.pack(fill="x", padx=25, pady=(13, 9))
-        for index, (title, value) in enumerate((
-            ("↓  ПОЛУЧЕНО", self.rx), ("↑  ОТПРАВЛЕНО", self.tx),
-            ("◷  ВРЕМЯ", self.timing))):
-            if index:
-                tk.Frame(metrics, bg="#2c4359", width=1).pack(
-                    side="left", fill="y", padx=6)
-            block = tk.Frame(metrics, bg=PANEL)
-            block.pack(side="left", fill="x", expand=True, padx=4)
-            self.label(block, title, 8, MUTED, "bold").pack(anchor="w")
+        # Functional, low-noise tunnel policy strip.
+        route = tk.Frame(main, bg=PANEL, padx=18, pady=12)
+        route.pack(fill="x", pady=(5, 12))
+        route_info = tk.Frame(route, bg=PANEL)
+        route_info.pack(side="left", fill="x", expand=True)
+        self.label(route_info, "РЕЖИМ ТУННЕЛЯ", 9, MUTED, "bold").pack(anchor="w")
+        self.mode_row = tk.Button(route_info, textvariable=self.mode_text,
+                                  bg=PANEL, fg=TEXT, activebackground=PANEL,
+                                  activeforeground=ACCENT, relief="flat", bd=0,
+                                  font=("DejaVu Sans", 12, "bold"),
+                                  cursor="hand2", anchor="w", command=self.open_settings)
+        self.mode_row.pack(anchor="w", pady=(5, 0))
+        self.button(route, "Настроить  ›", self.open_settings).pack(side="right")
+
+        metrics = tk.Frame(main, bg=BG)
+        metrics.pack(fill="x", pady=(0, 12))
+        for title, value in (("↓  ПОЛУЧЕНО", self.rx),
+                             ("↑  ОТПРАВЛЕНО", self.tx),
+                             ("◷  ВРЕМЯ", self.timing)):
+            block = tk.Frame(metrics, bg=PANEL, padx=17, pady=13)
+            block.pack(side="left", fill="both", expand=True, padx=5)
+            self.label(block, title, 9, MUTED, "bold").pack(anchor="w")
             tk.Label(block, textvariable=value, bg=PANEL, fg=TEXT,
-                     font=("DejaVu Sans", 11, "bold")).pack(
-                         anchor="w", pady=(7, 0))
+                     font=("DejaVu Sans", 13, "bold")).pack(
+                         anchor="w", pady=(6, 0))
 
-        lower = tk.Frame(self, bg=BG)
-        lower.pack(fill="x", padx=25, pady=(0, 12))
-        # Mode shortcut is small unobtrusive text, not a large settings card.
-        self.mode_row = tk.Button(
-            lower, textvariable=self.mode_text, bg=BG, fg=ACCENT,
-            activebackground=BG, activeforeground=TEXT,
-            font=("DejaVu Sans", 10), bd=0, relief="flat",
-            cursor="hand2", pady=10, command=self.open_settings)
-        self.mode_row.pack(fill="x", pady=(0, 4))
+        profile_card = tk.Frame(main, bg=PANEL, padx=18, pady=13)
+        profile_card.pack(fill="x", pady=(0, 10))
+        self.label(profile_card, "АКТИВНЫЙ СЕРВЕР", 9, MUTED, "bold").pack(anchor="w")
+        self.profile_btn = tk.Button(
+            profile_card, textvariable=self.profile_title, command=self.open_profiles,
+            bg=PANEL, fg=TEXT, activebackground=PANEL, activeforeground=ACCENT,
+            font=("DejaVu Sans", 14, "bold"), relief="flat", bd=0,
+            cursor="hand2", anchor="w")
+        self.profile_btn.pack(fill="x", pady=(5, 2))
+        tk.Label(profile_card, textvariable=self.endpoint, bg=PANEL, fg=MUTED,
+                 font=("DejaVu Sans", 10), anchor="w").pack(fill="x")
 
-        server = tk.Canvas(lower, height=92, bg=BG, bd=0,
-                           highlightthickness=0, cursor="hand2")
-        server.pack(fill="x")
-        server.bind("<Configure>", self._resize_server_card)
-        server.bind("<Button-1>", lambda _e: self.open_profiles())
-        server.bind("<Return>", lambda _e: self.open_profiles())
-        server.bind("<space>", lambda _e: self.open_profiles())
-        server.configure(takefocus=1)
-        self._server_card = server
-        self.profile_btn = server  # Profile-card action for accessibility and UI tests.
-        self._server_bg = self.rounded_rectangle(
-            server, 1, 1, 340, 91, 27, fill=PANEL, outline="")
-        self._server_label = server.create_text(
-            21, 21, text="ВАШ СЕРВЕР", anchor="w",
-            fill=MUTED, font=("DejaVu Sans", 9, "bold"))
-        self._server_title = server.create_text(
-            21, 48, text="", anchor="w", fill=TEXT,
-            font=("DejaVu Sans", 14, "bold"))
-        self._server_endpoint = server.create_text(
-            21, 73, text="", anchor="w", fill=MUTED,
-            font=("DejaVu Sans", 9))
-        self.profile_title.trace_add("write", lambda *_: self._update_server_card())
-        self.endpoint.trace_add("write", lambda *_: self._update_server_card())
-        self._update_server_card()
+        footer = tk.Frame(main, bg=BG)
+        footer.pack(fill="x")
+        self.button(footer, "＋  Импорт профиля", self.import_profile).pack(
+            side="left", fill="x", expand=True, padx=(0, 6))
+        self.button(footer, "Статистика", self.open_diagnostics).pack(
+            side="left", fill="x", expand=True, padx=(6, 0))
+        self.log("Интерфейс готов. Параметры доступны в разделе Настройки.")
 
-        nav = tk.Frame(self, bg=BG, pady=7)
-        nav.pack(fill="x", padx=14, pady=(0, 9))
-        for label, action, active in (
-            ("⚙  Настройки", self.open_settings, False),
-            ("＋ Импорт", self.import_profile, False),
-        ):
-            self.nav_action(nav, label, action, active).pack(
-                side="left", expand=True)
-        self.log("Приложение готово. Настройки доступны отдельно.")
+    def open_about(self):
+        messagebox.showinfo("О NetherVPN",
+                            "NetherVPN — экспериментальный VPN-клиент.\\n"
+                            "Noise IK · IPv4 · Linux.\\n"
+                            "Для каждого устройства нужен отдельный профиль.")
 
     @staticmethod
     def _rounded_points(x1, y1, x2, y2, r):
