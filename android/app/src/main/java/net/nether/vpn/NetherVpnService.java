@@ -9,6 +9,7 @@ import android.net.VpnService;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
+import android.util.Log;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -32,6 +33,9 @@ public final class NetherVpnService extends VpnService {
     private final Object lifecycleLock = new Object();
     private final AtomicLong bytesUp = new AtomicLong();
     private final AtomicLong bytesDown = new AtomicLong();
+    private final AtomicLong droppedPackets = new AtomicLong();
+    private volatile long connectedSinceElapsed = 0;
+    private volatile String phase = "disconnected";
     private volatile boolean running;
     private Thread worker;
     private DatagramSocket socket;
@@ -43,7 +47,7 @@ public final class NetherVpnService extends VpnService {
         NotificationManager manager = getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(CHANNEL,
                 "NetherVPN connection", NotificationManager.IMPORTANCE_LOW));
-        publish("Не подключено");
+        publish("Не подключено", "disconnected");
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
@@ -67,6 +71,8 @@ public final class NetherVpnService extends VpnService {
             running = true;
             bytesUp.set(0);
             bytesDown.set(0);
+            droppedPackets.set(0);
+            connectedSinceElapsed = 0;
             worker = new Thread(this::connectionLoop, "NetherVPN-worker");
             worker.start();
         }
@@ -80,7 +86,7 @@ public final class NetherVpnService extends VpnService {
         Intent stop = new Intent(this, NetherVpnService.class).setAction(DISCONNECT);
         PendingIntent stopAction = PendingIntent.getService(this, 1, stop, flags);
         return new Notification.Builder(this, CHANNEL)
-                .setSmallIcon(android.R.drawable.stat_sys_warning)
+                .setSmallIcon(R.drawable.ic_nethervpn)
                 .setContentTitle("NetherVPN · тестовая версия")
                 .setContentText(state).setContentIntent(tap)
                 .setOngoing(true)
@@ -89,14 +95,29 @@ public final class NetherVpnService extends VpnService {
                 .build();
     }
 
-    private void publish(String state) {
+    private void publish(String state, String newPhase) {
+        phase = newPhase;
         getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                 .putString("state", state)
+                .putString("phase", newPhase)
+                .putLong("since_elapsed", connectedSinceElapsed)
                 .putLong("tx", bytesUp.get())
                 .putLong("rx", bytesDown.get())
+                .putLong("dropped", droppedPackets.get())
                 .apply();
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (running) manager.notify(NOTIFICATION_ID, notification(state));
+    }
+
+    /** Rejected TUN packets are normal on dual-stack Android networks.
+     * Never log their contents and never destroy an authenticated session. */
+    private void noteDrop(int reason, int bytes) {
+        long count = droppedPackets.incrementAndGet();
+        if (count <= 3 || (count & (count - 1)) == 0) {
+            Log.i("NetherVPN", "Dropped IP packet: " + PacketPolicy.reason(reason)
+                    + " (" + bytes + " B, total " + count + "); session remains active");
+        }
+        updateStats();
     }
 
     private void updateStats() {
@@ -104,7 +125,8 @@ public final class NetherVpnService extends VpnService {
         if (now - lastUiUpdate > 1000) {
             lastUiUpdate = now;
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                    .putLong("tx", bytesUp.get()).putLong("rx", bytesDown.get()).apply();
+                    .putLong("tx", bytesUp.get()).putLong("rx", bytesDown.get())
+                    .putLong("dropped", droppedPackets.get()).apply();
         }
     }
 
@@ -125,9 +147,9 @@ public final class NetherVpnService extends VpnService {
                 synchronized (lifecycleLock) { socket = udp; }
                 if (!protect(udp)) throw new IOException("Не удалось исключить UDP-сокет из VPN");
                 udp.connect(server);
-                publish("Noise IK: аутентификация…");
+                publish("Noise IK: аутентификация…", "connecting");
                 secure = NoiseTransport.handshake(udp, server, profile);
-                publish("Проверка зашифрованного обмена…");
+                publish("Проверка зашифрованного обмена…", "connecting");
                 awaitPong(udp, secure);
                 if (!running) break;
 
@@ -148,17 +170,19 @@ public final class NetherVpnService extends VpnService {
                 ParcelFileDescriptor device = builder.establish();
                 if (device == null) throw new IOException("Android отказал в создании VPN TUN");
                 synchronized (lifecycleLock) { tun = device; }
-                publish(settings.fullTunnel ? "Подключено · весь IPv4 через VPN" : "Подключено · только " + profile.peerIp);
+                connectedSinceElapsed = SystemClock.elapsedRealtime();
+                publish(settings.fullTunnel ? "Подключено · весь IPv4 через VPN" : "Подключено · только " + profile.peerIp, "connected");
                 delay = 1;
                 transfer(udp, secure, device, profile, settings.fullTunnel);
             } catch (Exception error) {
-                if (running) publish("Ошибка: " + concise(error));
+                if (running) publish("Ошибка: " + concise(error), "error");
             } finally {
                 closeCurrent();
                 if (secure != null) secure.close();
             }
             if (running) {
-                publish("Переподключение через " + delay + " с");
+                connectedSinceElapsed = 0;
+                publish("Переподключение через " + delay + " с", "reconnecting");
                 try { Thread.sleep(delay * 1000L); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
                 delay = Math.min(delay * 2, 8);
             }
@@ -207,7 +231,11 @@ public final class NetherVpnService extends VpnService {
                     if (count == 0 || count > profile.mtu) continue;
                     // IPv6 traffic is captured but deliberately not transmitted:
                     // gateway currently supports only routed/NATed IPv4.
-                    if (!validOutbound(data, count, profile)) continue;
+                    int verdict = PacketPolicy.outbound(data, count, profile.localBytes);
+                    if (verdict != PacketPolicy.OK) {
+                        noteDrop(verdict, count);
+                        continue;
+                    }
                     send(udp, secure.seal(data, count));
                     bytesUp.addAndGet(count);
                     updateStats();
@@ -241,7 +269,12 @@ public final class NetherVpnService extends VpnService {
                         lastPong = SystemClock.elapsedRealtime();
                         continue;
                     }
-                    if (!validFromPeer(plain, profile, fullTunnel)) continue;
+                    int verdict = PacketPolicy.inbound(plain, plain.length, profile.localBytes,
+                            profile.peerBytes, fullTunnel);
+                    if (verdict != PacketPolicy.OK) {
+                        noteDrop(verdict, plain.length);
+                        continue;
+                    }
                     output.write(plain);
                     bytesDown.addAndGet(plain.length);
                     updateStats();
@@ -254,33 +287,6 @@ public final class NetherVpnService extends VpnService {
         }
     }
 
-    /** Authenticated encrypted return packets must be IPv4 destined to this client. */
-    private static boolean validFromPeer(byte[] packet, VpnProfile profile, boolean fullTunnel) {
-        if (!validIPv4(packet, packet.length)) return false;
-        if (!addressEquals(packet, 16, profile.localBytes)) return false;
-        return fullTunnel || addressEquals(packet, 12, profile.peerBytes);
-    }
-
-    /** Drop IPv6 and reject any source address not assigned by the server. */
-    private static boolean validOutbound(byte[] packet, int length, VpnProfile profile) {
-        return validIPv4(packet, length) && addressEquals(packet, 12, profile.localBytes);
-    }
-
-    private static boolean validIPv4(byte[] packet, int length) {
-        if (length < 20 || (packet[0] >>> 4 & 15) != 4) return false;
-        int ihl = (packet[0] & 15) * 4;
-        int total = (packet[2] & 255) * 256 + (packet[3] & 255);
-        return ihl >= 20 && ihl <= length && total == length;
-    }
-
-    private static boolean addressEquals(byte[] packet, int offset, byte[] ip) {
-        if (ip.length != 4 || packet.length < offset + 4) return false;
-        for (int i = 0; i < 4; i++) {
-            if (packet[offset + i] != ip[i]) return false;
-        }
-        return true;
-    }
-
     private void closeCurrent() {
         synchronized (lifecycleLock) {
             if (tun != null) { try { tun.close(); } catch (IOException ignored) { } tun = null; }
@@ -290,6 +296,7 @@ public final class NetherVpnService extends VpnService {
 
     private void shutdown() {
         running = false;
+        connectedSinceElapsed = 0;
         closeCurrent();
         if (worker != null) worker.interrupt();
         publish("Не подключено");
