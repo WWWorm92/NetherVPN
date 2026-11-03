@@ -98,35 +98,70 @@ class App(tk.Tk):
                          relief="flat", bd=0, padx=16, pady=11,
                          cursor="hand2", highlightthickness=0)
 
+    @staticmethod
+    def rounded_rectangle(canvas, x1, y1, x2, y2, radius, **kwargs):
+        """Smooth rounded shape: Tk does not support native corner radius."""
+        r = min(radius, (x2 - x1) / 2, (y2 - y1) / 2)
+        return canvas.create_polygon(
+            x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r,
+            x2, y2 - r, x2, y2, x2 - r, y2, x1 + r, y2,
+            x1, y2, x1, y2 - r, x1, y1 + r, x1, y1,
+            smooth=True, splinesteps=16, **kwargs)
+
+    def nav_action(self, parent, title, command, active=False):
+        """Rounded, focusable navigation chip without square Tk buttons."""
+        width = 114 if title != "＋ Импорт" else 102
+        chip = tk.Canvas(parent, width=width, height=42, bg=BG, bd=0,
+                         highlightthickness=0, cursor="hand2", takefocus=1)
+        self.rounded_rectangle(chip, 2, 2, width - 2, 40, 20,
+                               fill=RAISED if active else BG, outline="")
+        chip.create_text(width / 2, 21, text=title,
+                         fill=TEXT if active else MUTED,
+                         font=("DejaVu Sans", 10, "bold" if active else "normal"))
+        chip.bind("<Button-1>", lambda _e: command())
+        chip.bind("<Return>", lambda _e: command())
+        chip.bind("<space>", lambda _e: command())
+        return chip
+
     def _ui(self):
-        """Single-screen compact client; advanced controls live in dialogs."""
+        """Original NetherVPN layout: soft connection capsule and quiet controls."""
         top = tk.Frame(self, bg=BG)
-        top.pack(fill="x", padx=22, pady=(19, 9))
+        top.pack(fill="x", padx=24, pady=(24, 4))
         self._header_icon = self._app_icon.subsample(2, 2)
         tk.Label(top, image=self._header_icon, bg=BG, bd=0).pack(
-            side="left", padx=(0, 9))
-        self.label(top, "NetherVPN", 17, TEXT, "bold").pack(side="left")
-        self.label(top, "LINUX  ·  BETA", 9, MUTED, "bold").pack(
-            side="right", pady=(7, 0))
+            side="left", padx=(0, 11))
+        brand = tk.Frame(top, bg=BG)
+        brand.pack(side="left")
+        self.label(brand, "NetherVPN", 18, TEXT, "bold").pack(anchor="w")
+        self.label(brand, "Личный защищённый канал", 9, MUTED).pack(anchor="w")
+        self.label(top, "LINUX", 9, ACCENT, "bold").pack(
+            side="right", pady=(8, 0))
 
         center = tk.Frame(self, bg=BG)
-        center.pack(fill="both", expand=True, padx=15)
-        # A canvas ring keeps the same composition on small Linux desktops
-        # without embedding unmaintainable screenshots or external fonts.
-        self.connect_btn = tk.Canvas(center, width=246, height=246, bg=BG,
-                                     bd=0, highlightthickness=0,
-                                     cursor="hand2", takefocus=1)
-        self.connect_btn.pack(expand=True, pady=(10, 5))
-        self.outer_ring = self.connect_btn.create_oval(
-            12, 12, 234, 234, outline=RAISED, width=4)
-        self.inner_ring = self.connect_btn.create_oval(
-            18, 18, 228, 228, outline="#353941", width=1)
+        center.pack(fill="both", expand=True, padx=17)
+        self.label(center, "ВАШЕ СОЕДИНЕНИЕ", 9, MUTED, "bold").pack(
+            anchor="w", padx=12, pady=(23, 0))
+
+        # Wide, rounded connection capsule replaces the generic power circle.
+        self.connect_btn = tk.Canvas(center, height=226, bg=BG, bd=0,
+                                     highlightthickness=0, cursor="hand2",
+                                     takefocus=1)
+        self.connect_btn.pack(fill="x", expand=True, pady=(4, 4))
+        self._capsule_width = 340
+        self.outer_ring = self.rounded_rectangle(
+            self.connect_btn, 15, 47, 325, 183, 40,
+            fill=RAISED, outline="")
+        self.inner_ring = self.connect_btn.create_line(
+            53, 152, 287, 152, fill="#454650", width=1)
         self.power_text = self.connect_btn.create_text(
-            123, 118, text="Подключить", fill=TEXT,
-            font=("DejaVu Sans", 16, "bold"), anchor="center")
+            170, 103, text="Подключить", fill=TEXT,
+            font=("DejaVu Sans", 19, "bold"))
         self.power_subtext = self.connect_btn.create_text(
-            123, 146, text="Нажмите, чтобы включить",
+            170, 130, text="Нажмите для подключения",
             fill=MUTED, font=("DejaVu Sans", 9))
+        self._accent_line = self.connect_btn.create_line(
+            145, 65, 195, 65, fill=ACCENT, width=4, capstyle="round")
+        self.connect_btn.bind("<Configure>", self._resize_capsule)
         self.connect_btn.bind("<Button-1>", lambda _e: self.toggle_connection())
         self.connect_btn.bind("<Return>", lambda _e: self.toggle_connection())
         self.connect_btn.bind("<space>", lambda _e: self.toggle_connection())
@@ -134,42 +169,82 @@ class App(tk.Tk):
         self.status_badge = tk.Label(
             center, textvariable=self.status_tag, bg=BG, fg=MUTED,
             font=("DejaVu Sans", 10, "bold"))
-        self.status_badge.pack(pady=(0, 4))
+        self.status_badge.pack(pady=(3, 6))
         tk.Label(center, textvariable=self.status_hint, bg=BG, fg=MUTED,
-                 font=("DejaVu Sans", 9)).pack(pady=(0, 6))
+                 font=("DejaVu Sans", 9)).pack(pady=(0, 10))
 
         lower = tk.Frame(self, bg=BG)
-        lower.pack(fill="x", padx=18, pady=(0, 10))
-        # Route policy is a one-tap shortcut, not a screen full of settings.
+        lower.pack(fill="x", padx=25, pady=(0, 12))
+        # Mode shortcut is small unobtrusive text, not a large settings card.
         self.mode_row = tk.Button(
-            lower, textvariable=self.mode_text, bg=BG, fg=MUTED,
+            lower, textvariable=self.mode_text, bg=BG, fg=ACCENT,
             activebackground=BG, activeforeground=TEXT,
             font=("DejaVu Sans", 10), bd=0, relief="flat",
-            cursor="hand2", pady=11, command=self.open_settings)
-        self.mode_row.pack(fill="x", pady=(1, 8))
-        selected = tk.Frame(lower, bg=PANEL, padx=15, pady=13)
-        selected.pack(fill="x")
-        tk.Label(selected, text="СЕРВЕР", bg=PANEL, fg=MUTED,
-                 font=("DejaVu Sans", 9, "bold")).pack(anchor="w")
-        self.profile_btn = tk.Button(
-            selected, textvariable=self.profile_title,
-            bg=PANEL, fg=TEXT, activebackground=PANEL,
-            activeforeground=ACCENT, font=("DejaVu Sans", 15, "bold"),
-            relief="flat", bd=0, cursor="hand2", anchor="w",
-            command=self.open_profiles)
-        self.profile_btn.pack(fill="x", pady=(4, 1))
-        tk.Label(selected, textvariable=self.endpoint, bg=PANEL, fg=MUTED,
-                 font=("DejaVu Sans", 9), anchor="w").pack(fill="x")
+            cursor="hand2", pady=10, command=self.open_settings)
+        self.mode_row.pack(fill="x", pady=(0, 8))
 
-        nav = tk.Frame(self, bg=PANEL, pady=11)
-        nav.pack(fill="x")
-        self.button(nav, "⌂  Главная", lambda: None, True).pack(
-            side="left", expand=True)
-        self.button(nav, "⚙  Настройки", self.open_settings).pack(
-            side="left", expand=True)
-        self.button(nav, "＋  Импорт", self.import_profile).pack(
-            side="left", expand=True)
+        server = tk.Canvas(lower, height=99, bg=BG, bd=0,
+                           highlightthickness=0, cursor="hand2")
+        server.pack(fill="x")
+        server.bind("<Configure>", self._resize_server_card)
+        server.bind("<Button-1>", lambda _e: self.open_profiles())
+        self._server_card = server
+        self._server_bg = self.rounded_rectangle(
+            server, 1, 1, 340, 98, 23, fill=PANEL, outline="")
+        self._server_label = server.create_text(
+            20, 22, text="АКТИВНЫЙ ПРОФИЛЬ", anchor="w",
+            fill=MUTED, font=("DejaVu Sans", 9, "bold"))
+        self._server_title = server.create_text(
+            20, 51, text="", anchor="w", fill=TEXT,
+            font=("DejaVu Sans", 14, "bold"))
+        self._server_endpoint = server.create_text(
+            20, 77, text="", anchor="w", fill=MUTED,
+            font=("DejaVu Sans", 9))
+        self.profile_title.trace_add("write", lambda *_: self._update_server_card())
+        self.endpoint.trace_add("write", lambda *_: self._update_server_card())
+        self._update_server_card()
+
+        nav = tk.Frame(self, bg=BG, pady=9)
+        nav.pack(fill="x", padx=14, pady=(0, 9))
+        for label, action, active in (
+            ("⌂  Главная", lambda: None, True),
+            ("⚙  Настройки", self.open_settings, False),
+            ("＋ Импорт", self.import_profile, False),
+        ):
+            self.nav_action(nav, label, action, active).pack(
+                side="left", expand=True)
         self.log("Приложение готово. Настройки доступны отдельно.")
+
+    def _resize_capsule(self, event):
+        width = max(300, event.width)
+        center = width / 2
+        left, right = center - min(157, width / 2 - 14), center + min(157, width / 2 - 14)
+        self.connect_btn.coords(
+            self.outer_ring,
+            *self._rounded_points(left, 47, right, 183, 40))
+        self.connect_btn.coords(self.inner_ring, left + 37, 152, right - 37, 152)
+        self.connect_btn.coords(self.power_text, center, 103)
+        self.connect_btn.coords(self.power_subtext, center, 130)
+        self.connect_btn.coords(self._accent_line, center - 25, 65, center + 25, 65)
+
+    @staticmethod
+    def _rounded_points(x1, y1, x2, y2, r):
+        return (x1+r, y1, x2-r, y1, x2, y1, x2, y1+r,
+                x2, y2-r, x2, y2, x2-r, y2, x1+r, y2,
+                x1, y2, x1, y2-r, x1, y1+r, x1, y1)
+
+    def _resize_server_card(self, event):
+        self._server_card.coords(
+            self._server_bg, *self._rounded_points(
+                1, 1, max(20, event.width - 1), 98, 23))
+
+    def _update_server_card(self):
+        if not hasattr(self, "_server_card"):
+            return
+        self._server_card.itemconfigure(
+            self._server_title, text=self.profile_title.get().replace("   ⌄", ""))
+        self._server_card.itemconfigure(
+            self._server_endpoint, text=self.endpoint.get()[:49])
 
     def toggle_connection(self):
         if self.busy:
@@ -655,7 +730,8 @@ class App(tk.Tk):
             color = "#59606e"
             title = "Подключить"
             subtitle = "Нажмите для включения"
-        self.connect_btn.itemconfigure(self.outer_ring, outline=color)
+        self.connect_btn.itemconfigure(self.outer_ring, fill=RAISED if not ready else "#263b39")
+        self.connect_btn.itemconfigure(self._accent_line, fill=color)
         self.connect_btn.itemconfigure(self.power_text, text=title, fill=TEXT)
         self.connect_btn.itemconfigure(self.power_subtext, text=subtitle, fill=MUTED)
         self.connect_btn.configure(state="disabled" if self.busy else "normal")
